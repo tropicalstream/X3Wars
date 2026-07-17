@@ -10,19 +10,17 @@ import java.io.File
 import kotlin.random.Random
 
 /**
- * Scene music from user-supplied MP3s — bring your own soundtrack.
+ * Scene music — bring your own soundtrack.
  *
- * On first boot the app creates one folder per scene under its app-specific
- * external storage (no permissions needed, visible over USB/adb):
+ * Authoring happens in the repo: `music/<scene>/_prompt.txt` holds an
+ * AI-music prompt per scene; generated tracks are dropped into those folders
+ * and integrated into `app/src/main/assets/music/<scene>/`, shipping inside
+ * the APK. The matching scene loops a random bundled track.
  *
- *   Android/data/com.x3wars/files/music/
- *     title/  yavin_space/  yavin_surface/  yavin_trench/
- *     hoth_droids/  hoth_walkers/  hoth_fleet/  hoth_deck/
- *     endor_forest/  endor_space/  endor_core/  victory/
- *
- * Drop any .mp3 (or .ogg/.m4a) files in; the matching scene loops a random
- * one. Empty folder = that scene simply plays without music. Playback is a
- * single MediaPlayer on its own thread — never the GL thread.
+ * An on-device override also works for quick experiments: any tracks in
+ * `Android/data/com.x3wars/files/music/<scene>/` are preferred over the
+ * bundled ones. Empty everywhere = the scene plays without music. Playback
+ * is a single MediaPlayer on its own thread — never the GL thread.
  */
 class Music(private val context: Context) {
 
@@ -92,49 +90,55 @@ class Music(private val context: Context) {
     fun load() {
         thread = HandlerThread("x3wars-music").apply { start() }
         handler = Handler(thread!!.looper)
-        handler?.post {
-            // Create the drop-in folders, each with its AI-music prompt.
-            runCatching {
-                val root = File(context.getExternalFilesDir(null), "music")
-                for (s in SCENES) {
-                    val dir = File(root, s).apply { mkdirs() }
-                    val prompt = File(dir, "_prompt.txt")
-                    val text = PROMPTS[s] ?: continue
-                    if (!prompt.exists() || prompt.readText() != text) prompt.writeText(text)
-                }
-            }.onFailure { Log.w(TAG, "music dirs", it) }
-        }
+        // Authoring lives in the repo's music/ folders; nothing to set up here.
     }
 
-    /** Switch to a scene's folder (loops a random track), or stop with null. */
+    private fun isTrack(name: String) =
+        name.endsWith(".mp3", true) || name.endsWith(".ogg", true) || name.endsWith(".m4a", true)
+
+    /** Switch scenes (loops a random track), or stop with null. */
     fun play(scene: String?) {
         handler?.post {
             if (scene == current && player != null) return@post
             current = scene
             stopOnThread()
             if (scene == null) return@post
+
+            // On-device override first, then the tracks bundled in the APK.
             val dir = File(File(context.getExternalFilesDir(null), "music"), scene)
-            val tracks = dir.listFiles { f ->
-                f.isFile && (f.name.endsWith(".mp3", true) ||
-                    f.name.endsWith(".ogg", true) || f.name.endsWith(".m4a", true))
+            val local = dir.listFiles { f -> f.isFile && isTrack(f.name) }
+            if (local != null && local.isNotEmpty()) {
+                startPlayer { it.setDataSource(local[rng.nextInt(local.size)].absolutePath) }
+                return@post
             }
-            if (tracks == null || tracks.isEmpty()) return@post
-            val pick = tracks[rng.nextInt(tracks.size)]
-            runCatching {
-                val mp = MediaPlayer()
-                mp.setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_GAME)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build()
-                )
-                mp.setDataSource(pick.absolutePath)
-                mp.isLooping = true
-                mp.setVolume(volume, volume)
-                mp.prepare()
-                mp.start()
-                player = mp
-            }.onFailure { Log.w(TAG, "music ${pick.name}", it) }
+            val bundled = runCatching {
+                context.assets.list("music/$scene")?.filter { isTrack(it) }
+            }.getOrNull()
+            if (bundled.isNullOrEmpty()) return@post
+            val pick = bundled[rng.nextInt(bundled.size)]
+            startPlayer {
+                val fd = context.assets.openFd("music/$scene/$pick")
+                it.setDataSource(fd.fileDescriptor, fd.startOffset, fd.length)
+                fd.close()
+            }
         }
+    }
+
+    private fun startPlayer(source: (MediaPlayer) -> Unit) {
+        runCatching {
+            val mp = MediaPlayer()
+            mp.setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_GAME)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build()
+            )
+            source(mp)
+            mp.isLooping = true
+            mp.setVolume(volume, volume)
+            mp.prepare()
+            mp.start()
+            player = mp
+        }.onFailure { Log.w(TAG, "music start", it) }
     }
 
     fun pause() { handler?.post { runCatching { player?.pause() } } }

@@ -29,21 +29,27 @@ core.
 Miss a torpedo window and you loop around for another pass. Every full cycle
 raises the PART number: more enemies, tougher walkers, tighter gaps.
 
-## Your soundtrack (drop-in MP3 folders)
+## Your soundtrack (authored in the repo)
 
-On first launch the game creates one folder per scene under
-`Android/data/com.x3wars/files/music/` on the glasses:
+The `music/` folder in this repo holds one workspace per scene — `title`,
+`yavin_space`, `yavin_surface`, `yavin_trench`, `hoth_droids`,
+`hoth_walkers`, `hoth_fleet`, `hoth_deck`, `endor_forest`, `endor_space`,
+`endor_core`, `victory` — each containing **`_prompt.txt`**, a
+ready-to-paste AI-music-generation prompt matched to that scene's mood and
+tempo.
 
-`title · yavin_space · yavin_surface · yavin_trench · hoth_droids ·
-hoth_walkers · hoth_fleet · hoth_deck · endor_forest · endor_space ·
-endor_core · victory`
-
-Drop `.mp3` (or `.ogg`/`.m4a`) files in any of them — that scene loops a
-random pick. Empty folder = no music, game plays on. Push from a computer:
+Workflow: paste a prompt into your generator, save the result into the same
+folder as `.mp3`/`.ogg`/`.m4a`, then integrate and rebuild:
 
 ```bash
-adb push mytrack.mp3 /sdcard/Android/data/com.x3wars/files/music/yavin_trench/
+tools/integrate_music.sh     # copies tracks into app assets
+./gradlew assembleDebug      # they now ship inside the APK
 ```
+
+A scene with several tracks picks one at random each time; a scene with
+none plays without music. (Tracks pushed to
+`Android/data/com.x3wars/files/music/<scene>/` on the device override the
+bundled ones — handy for quick experiments.)
 
 ## Controls (two inputs, no settings)
 
