@@ -3,3 +3,5 @@ build/
 app/build/
 local.properties
 .DS_Store
+/music/
+/app/src/main/assets/music/
