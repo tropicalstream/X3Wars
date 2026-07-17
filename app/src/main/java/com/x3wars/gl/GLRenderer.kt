@@ -610,6 +610,8 @@ class GLRenderer(private val game: Game) : GLSurfaceView.Renderer {
             when (bar.kind) {
                 1 -> buildTreeGate(bar)
                 2 -> buildPipeGate(bar)
+                3 -> buildBranchWall(bar)
+                4 -> buildShelf(bar)
                 else -> buildLatticeGate(bar)
             }
         }
@@ -658,6 +660,51 @@ class GLRenderer(private val game: Game) : GLSurfaceView.Renderer {
         }
         // gap marker on the ground
         lines.line(gxl, fl + 0.05f, z, gr, fl + 0.05f, z, 0.4f, 1f, 0.6f, 0.8f)
+    }
+
+    /** A solid dividing wall with one whole side open — the maze's S-turns. */
+    private fun buildBranchWall(bar: com.x3wars.engine.Barrier) {
+        val hw = Game.CORE_HALF_W
+        val fl = Game.CORE_FLOOR
+        val top = Game.CORE_TOP
+        val z = bar.z
+        val gxl = bar.gapX - bar.gapW / 2f
+        val gr = bar.gapX + bar.gapW / 2f
+        val r = 0.95f; val g = 0.45f; val b = 0.35f; val a = 0.9f
+        var x = -hw
+        while (x <= hw + 0.01f) {
+            if (x < gxl || x > gr) {
+                lines.line(x, fl, z, x, top, z, r, g, b, a * 0.6f)
+                lines.line(x, fl, z, x + 0.45f, top, z, r, g, b, a * 0.25f)  // cross-brace shimmer
+            }
+            x += 0.75f
+        }
+        lines.line(-hw, fl, z, hw, fl, z, r, g, b, a)
+        lines.line(-hw, top, z, hw, top, z, r, g, b, a)
+        // the open passage, outlined in safe teal
+        val ox = if (bar.gapX > 0f) gxl else gr
+        lines.line(ox, fl, z, ox, top, z, 0.3f, 0.9f, 0.85f, a)
+    }
+
+    /** A horizontal shelf: crawl under it or climb over it. */
+    private fun buildShelf(bar: com.x3wars.engine.Barrier) {
+        val hw = Game.CORE_HALF_W
+        val fl = Game.CORE_FLOOR
+        val top = Game.CORE_TOP
+        val z = bar.z
+        val gb = bar.gapY - bar.gapH / 2f
+        val gt = bar.gapY + bar.gapH / 2f
+        val r = 0.95f; val g = 0.45f; val b = 0.35f; val a = 0.9f
+        var y = fl
+        while (y <= top + 0.01f) {
+            if (y < gb || y > gt) lines.line(-hw, y, z, hw, y, z, r, g, b, a * 0.6f)
+            y += 0.65f
+        }
+        lines.line(-hw, fl, z, -hw, top, z, r, g, b, a)
+        lines.line(hw, fl, z, hw, top, z, r, g, b, a)
+        // safe band outline
+        lines.line(-hw, gb, z, hw, gb, z, 0.3f, 0.9f, 0.85f, a)
+        lines.line(-hw, gt, z, hw, gt, z, 0.3f, 0.9f, 0.85f, a)
     }
 
     /** A conduit ring blocking the duct except for its gap. */
@@ -916,8 +963,8 @@ class GLRenderer(private val game: Game) : GLSurfaceView.Renderer {
             GameState.TITLE -> {
                 textC("X3WARS", 320f, 150f, 6f, 0.45f, 1f, 0.6f)
                 textC("YAVIN - HOTH - ENDOR", 320f, 195f, 1.6f, 0.6f, 0.85f, 1f)
-                textC("SWIPE TO AIM - CANNONS FIRE THEMSELVES", 320f, 300f, 1.3f, 0.75f, 0.8f, 0.9f)
-                textC("TAP AT THE HEART OF EACH BATTLE", 320f, 322f, 1.3f, 0.75f, 0.8f, 0.9f)
+                textC("SWIPE TO AIM - TAP TO FIRE", 320f, 300f, 1.3f, 0.75f, 0.8f, 0.9f)
+                textC("AT EACH BATTLES HEART - TAP FOR TORPEDOES", 320f, 322f, 1.3f, 0.75f, 0.8f, 0.9f)
                 val blink = 0.5f + 0.5f * sin(g.time * 5f)
                 textC("TAP TO LAUNCH", 320f, 400f, 2.2f, 0.45f, 1f, 0.6f, blink)
                 textC("HIGH " + g.hiScore, 320f, 435f, 1.3f, 1f, 0.85f, 0.4f)
@@ -927,7 +974,11 @@ class GLRenderer(private val game: Game) : GLSurfaceView.Renderer {
                 textC(g.briefSub, 320f, 250f, 1.7f, 1f, 0.85f, 0.4f)
                 hudCommon()
             }
-            GameState.FIGHTERS -> { sceneHeader("INTERCEPTORS"); killsLine(); hudCommon() }
+            GameState.FIGHTERS -> {
+                sceneHeader("INTERCEPTORS")
+                if (g.part == 1 && g.stateT < 6f) textC("TAP TO FIRE", 320f, 180f, 1.5f, 1f, 0.85f, 0.4f, 0.8f)
+                killsLine(); hudCommon()
+            }
             GameState.DROIDS -> { sceneHeader("HUNT THE PROBES"); killsLine(); hudCommon() }
             GameState.WALKERS -> { sceneHeader("THE WALKERS"); killsLine(); hudCommon() }
             GameState.FLEET -> {

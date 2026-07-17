@@ -55,9 +55,8 @@ bundled ones — handy for quick experiments.)
 
 | Input | Action |
 |---|---|
-| **Swipe** (4-way) | Steer the aim reticle — in the trench it flies the ship |
-| **Tap** | Launch torpedoes at the port · start · retry |
-| — | The cannons fire themselves |
+| **Swipe** (4-way) | Steer the aim reticle — in the runs it flies the ship |
+| **Tap** | FIRE the cannons · torpedoes at each battle's heart · start · retry |
 
 Suite conventions: temple tap arrives as a KEY, the left pad is ignored,
 horizontal swipe sign is inverted on this hardware (forward = right).

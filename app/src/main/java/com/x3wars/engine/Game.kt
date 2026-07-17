@@ -174,6 +174,8 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
     private var lastAlmost = false
     private var portRuns = 0
     private var saidScene = false
+    private var mazeStep = 0
+    private var mazeSide = 1f
 
     /** Difficulty scalar: 0 on the first campaign, +1 each full cycle. */
     private val d get() = (part - 1).toFloat()
@@ -209,6 +211,9 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
                 host.music("title")
             }
             GameState.PORT -> tryTorpedo()
+            GameState.FIGHTERS, GameState.DROIDS, GameState.FLEET,
+            GameState.SURFACE, GameState.WALKERS, GameState.DECK,
+            GameState.TRENCH, GameState.BIKES, GameState.CORE -> fireShot()
             else -> {}
         }
     }
@@ -325,6 +330,7 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
         // Slow enough to read the barrier gaps and steer through them.
         worldSpeed = 66f + 4f * d
         barrierCd = 1.8f
+        spawnCd = 0.4f
         if (!rerun) { host.sfx(Sfx.WARP); host.say("pilot_trench") }
         host.startRumble()
         host.music("yavin_trench")
@@ -400,7 +406,8 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
         state = GameState.CORE; stateT = 0f
         rangeM = (16000f + 2000f * d).coerceAtMost(26000f)
         worldSpeed = 60f + 4f * d      // tightest walls, gentlest speed
-        barrierCd = 1.8f
+        barrierCd = 1.6f
+        mazeStep = 0; mazeSide = 1f
         host.sfx(Sfx.ALARM, 1f, 0.7f)
         host.say(if (rng.nextBoolean()) "sage_core" else "lord_core")
         host.startRumble(0.9f)
@@ -497,6 +504,7 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
         whiteFlash = (whiteFlash - dt * 1.1f).coerceAtLeast(0f)
         beamT = (beamT + dt * 9f).coerceAtMost(1f)
 
+        fireCd = (fireCd - dt).coerceAtLeast(0f)
         val k = 1f - exp(-11f * dt)
         rx += (rtx - rx) * k
         ry += (rty - ry) * k
@@ -562,7 +570,6 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
 
     private inline fun updateSwoopers(dt: Float, starsSpeed: Float, spawner: () -> Unit) {
         updateStars(dt, starsSpeed)
-        autoFire(dt)
         spawnCd -= dt
         var aliveCount = 0
         for (f in fighters) if (f.alive) aliveCount++
@@ -678,7 +685,6 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
     // -------------------------------------------- ground scenes (surface/deck)
 
     private fun updateSurface(dt: Float) {
-        autoFire(dt)
         surfaceT -= dt
         spawnCd -= dt
         if (spawnCd <= 0f && surfaceT > 4f) {
@@ -691,7 +697,6 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
     }
 
     private fun updateDeck(dt: Float) {
-        autoFire(dt)
         spawnCd -= dt
         if (spawnCd <= 0f && kills < killQuota) {
             spawnTower(if (rng.nextBoolean()) 2 else 3)
@@ -705,7 +710,6 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
 
     private fun updateWalkers(dt: Float) {
         updateStars(dt, 4f)
-        autoFire(dt)
         spawnCd -= dt
         var aliveW = 0
         for (t in towers) if (t.alive) aliveW++
@@ -750,9 +754,10 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
         n.phase = rng.nextFloat() * 6.28f
         n.fireCd = 1f + rng.nextFloat()
         when (kind) {
-            1 -> { n.h = 8.5f; n.hp = 3; n.z = -240f - rng.nextFloat() * 60f }
+            1 -> { n.h = 8.5f; n.hp = 5; n.z = -240f - rng.nextFloat() * 60f }
             2 -> { n.h = 5f; n.hp = 1 }      // radar dish
             3 -> { n.h = 3.6f; n.hp = 2 }    // deck turret
+            4 -> { n.h = 3f; n.hp = 3 }      // forest strider
             else -> { n.h = 4.5f + rng.nextFloat() * 4f; n.hp = 1 }
         }
     }
@@ -778,7 +783,6 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
     fun shipY() = ry * TR_Y
 
     private inline fun updateRun(dt: Float, barrierKind: Int, onArrive: () -> Unit) {
-        autoFire(dt)
         rangeM -= worldSpeed * dt * 9f
         barrierCd -= dt
         if (barrierCd <= 0f && rangeM > 2500f) {
@@ -792,7 +796,7 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
             // firing, and shootable by flying the boresight onto them.
             if (spawnCd <= 0f && rangeM > 3000f) {
                 spawnWallTurret()
-                spawnCd = (3.0f - 0.2f * d).coerceAtLeast(1.6f) + rng.nextFloat()
+                spawnCd = (2.2f - 0.15f * d).coerceAtLeast(1.3f) + rng.nextFloat() * 0.6f
             }
             for (t in towers) {
                 if (!t.alive || t.kind != 5) continue
@@ -833,7 +837,6 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
     }
 
     private fun updateBikes(dt: Float) {
-        autoFire(dt)
         rangeM -= worldSpeed * dt * 9f
         barrierCd -= dt
         if (barrierCd <= 0f && rangeM > 2500f) {
@@ -849,6 +852,7 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
         }
         for (t in towers) {
             if (!t.alive || t.kind != 4) continue
+            t.hitCd = (t.hitCd - dt).coerceAtLeast(0f)
             t.phase += dt * 2.4f
             t.z += worldSpeed * 0.85f * dt
             if (t.z > -4f) { t.alive = false; continue }
@@ -868,17 +872,45 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
         var b: Barrier? = null
         for (c in barriers) if (!c.alive) { b = c; break }
         val n = b ?: return
-        n.kind = kind
         n.alive = true; n.scored = false
         n.z = -330f
+        if (kind == 2) {
+            // The core is a MAZE of ducts: alternate forced S-turns (branch
+            // walls open on one side), crawl/climb shelves, and pipe rings.
+            when (mazeStep % 4) {
+                0, 2 -> {              // branch wall: one whole side open
+                    n.kind = 3
+                    mazeSide = -mazeSide
+                    n.gapX = mazeSide * TR_X * 0.55f
+                    n.gapW = TR_X * 1.05f
+                    n.gapY = 0f
+                    n.gapH = 20f       // full height
+                }
+                1 -> {                 // shelf: go under or over
+                    n.kind = 4
+                    n.gapX = 0f
+                    n.gapW = 20f       // full width
+                    n.gapY = (if (rng.nextBoolean()) 1f else -1f) * TR_Y * 0.52f
+                    n.gapH = (2.4f - 0.1f * d).coerceAtLeast(1.7f)
+                }
+                else -> {              // pipe ring: the tight window
+                    n.kind = 2
+                    n.gapX = (rng.nextFloat() * 2f - 1f) * (TR_X * 0.6f)
+                    n.gapY = (rng.nextFloat() * 2f - 1f) * (TR_Y * 0.5f)
+                    n.gapW = (2.6f - 0.12f * d).coerceAtLeast(1.8f)
+                    n.gapH = (2.4f - 0.10f * d).coerceAtLeast(1.7f)
+                }
+            }
+            mazeStep++
+            return
+        }
+        n.kind = kind
         val gw = when (kind) {
             1 -> (3.4f - 0.15f * d).coerceAtLeast(2.4f)   // between trunks: generous
-            2 -> (2.5f - 0.12f * d).coerceAtLeast(1.7f)   // pipe gaps
             else -> (2.8f - 0.12f * d).coerceAtLeast(1.9f)
         }
         val gh = when (kind) {
             1 -> 5f                                        // trunks: full height gap
-            2 -> (2.3f - 0.10f * d).coerceAtLeast(1.6f)
             else -> (2.6f - 0.10f * d).coerceAtLeast(1.8f)
         }
         n.gapW = gw; n.gapH = gh
@@ -946,10 +978,10 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
 
     // ----------------------------------------------------------- shooting
 
-    private fun autoFire(dt: Float) {
-        fireCd -= dt
+    /** One tap, one shot — the cannons answer to the pilot now. */
+    private fun fireShot() {
         if (fireCd > 0f) return
-        fireCd = 0.15f
+        fireCd = 0.12f
         gunSide = !gunSide
         beamT = 0f
         beamX = rx; beamY = ry
@@ -990,10 +1022,17 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
                 else -> t.h - 6f
             }
             val r = when (t.kind) { 1 -> 0.20f; 2 -> 0.18f; 5 -> 0.20f; else -> 0.16f }
-            if (screenHit(t.x, ty, t.z, r)) {
-                if (t.kind == 1 && t.hitCd > 0f) return   // armored head shrugs rapid fire
+            // Armored walkers and striders: the head OR the legs are the
+            // weak zones — body shots don't count.
+            val legHit = when (t.kind) {
+                1 -> screenHit(t.x, -4.2f, t.z, 0.24f)
+                4 -> screenHit(t.x, -2.6f, t.z, 0.20f)
+                else -> false
+            }
+            if (screenHit(t.x, ty, t.z, r) || legHit) {
+                if ((t.kind == 1 || t.kind == 4) && t.hitCd > 0f) return
                 if (--t.hp > 0) {
-                    if (t.kind == 1) t.hitCd = 0.35f
+                    if (t.kind == 1 || t.kind == 4) t.hitCd = 0.3f
                     host.sfx(Sfx.EXPL_S, 0.7f, 0.6f)
                     explode(t.x, ty, t.z, 6, 0.08f)
                     return
@@ -1009,7 +1048,10 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
     }
 
     private fun screenHit(x: Float, y: Float, z: Float, r: Float): Boolean {
-        if (z > -3f || z < -290f) return false
+        // Engagement window: distant contacts all collapse into the vanishing
+        // point on screen — letting them be hit there made the game play
+        // itself. Nothing beyond -140 can be engaged.
+        if (z > -3f || z < -140f) return false
         val run = isRunScene()
         val dd = -z
         val ox = if (run) shipX() else 0f
@@ -1018,7 +1060,7 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
         val ay = if (run) 0f else ry
         val dx = ((x - ox) / dd) / TANX - ax
         val dy = ((y - oy) / dd) / TANY - ay
-        val rr = r * (1f + 26f / dd)
+        val rr = r * (1f + 8f / dd)
         return dx * dx + dy * dy < rr * rr
     }
 
