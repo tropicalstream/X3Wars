@@ -1,6 +1,7 @@
 package com.x3wars.audio
 
 import android.content.Context
+import android.content.res.AssetFileDescriptor
 import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.os.Handler
@@ -84,6 +85,7 @@ class Music(private val context: Context) {
     private var thread: HandlerThread? = null
     private var handler: Handler? = null
     private var player: MediaPlayer? = null
+    private var afd: AssetFileDescriptor? = null   // kept open for the life of the track
     private var current: String? = null
     private val rng = Random(System.nanoTime())
 
@@ -118,8 +120,8 @@ class Music(private val context: Context) {
             val pick = bundled[rng.nextInt(bundled.size)]
             startPlayer {
                 val fd = context.assets.openFd("music/$scene/$pick")
+                afd = fd   // closed in stopOnThread, after the player is released
                 it.setDataSource(fd.fileDescriptor, fd.startOffset, fd.length)
-                fd.close()
             }
         }
     }
@@ -148,6 +150,8 @@ class Music(private val context: Context) {
     private fun stopOnThread() {
         player?.let { runCatching { it.stop(); it.release() } }
         player = null
+        afd?.let { runCatching { it.close() } }
+        afd = null
     }
 
     fun release() {

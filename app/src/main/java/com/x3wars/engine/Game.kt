@@ -161,6 +161,7 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
     var victoryKind = 0; private set      // 0 station, 1 destroyer, 2 station mk2
     var briefTitle = ""; private set
     var briefSub = ""; private set
+    var objective = ""; private set
 
     private val rng = Random(System.nanoTime())
     private var fireCd = 0f
@@ -211,9 +212,6 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
                 host.music("title")
             }
             GameState.PORT -> tryTorpedo()
-            GameState.FIGHTERS, GameState.DROIDS, GameState.FLEET,
-            GameState.SURFACE, GameState.WALKERS, GameState.DECK,
-            GameState.TRENCH, GameState.BIKES, GameState.CORE -> fireShot()
             else -> {}
         }
     }
@@ -276,6 +274,8 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
     }
 
     private fun nextScene() {
+        // Objective cleared — a little breathing room restored.
+        if (shields < 6) shields++
         sceneIdx++
         val last = when (level) {
             Level.YAVIN -> 3   // fighters, surface, trench(+port)
@@ -304,8 +304,9 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
     private fun beginFighters() {
         clearField()
         state = GameState.FIGHTERS; stateT = 0f
+        objective = "CLEAR THE INTERCEPTORS"
         kills = 0
-        killQuota = (6 + 2 * d).toInt().coerceAtMost(16)
+        killQuota = (12 + 3 * d).toInt().coerceAtMost(30)
         spawnCd = 0.4f
         host.stopRumble()
         host.music("yavin_space")
@@ -314,7 +315,8 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
     private fun beginSurface() {
         clearField()
         state = GameState.SURFACE; stateT = 0f
-        surfaceT = 24f + 2f * d.coerceAtMost(5f)
+        objective = "SURVIVE THE SURFACE GUNS"
+        surfaceT = 50f + 4f * d.coerceAtMost(5f)
         worldSpeed = 90f + 6f * d
         briefTitle = "THE SURFACE"
         host.sfx(Sfx.WARP)
@@ -326,7 +328,8 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
     private fun beginTrench(rerun: Boolean = false) {
         clearField()
         state = GameState.TRENCH; stateT = 0f
-        rangeM = if (rerun) 6000f else (24000f + 2000f * d).coerceAtMost(34000f)
+        objective = "REACH THE EXHAUST PORT"
+        rangeM = if (rerun) 8000f else (48000f + 3000f * d).coerceAtMost(64000f)
         // Slow enough to read the barrier gaps and steer through them.
         worldSpeed = 66f + 4f * d
         barrierCd = 1.8f
@@ -340,8 +343,9 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
     private fun beginDroids() {
         clearField()
         state = GameState.DROIDS; stateT = 0f
+        objective = "DESTROY THE PROBE DROIDS"
         kills = 0
-        killQuota = (6 + 2 * d).toInt().coerceAtMost(14)
+        killQuota = (12 + 3 * d).toInt().coerceAtMost(26)
         spawnCd = 0.5f
         worldSpeed = 70f
         host.startRumble(0.8f)
@@ -351,8 +355,9 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
     private fun beginWalkers() {
         clearField()
         state = GameState.WALKERS; stateT = 0f
+        objective = "DOWN THE WALKERS - HEAD OR LEGS"
         kills = 0
-        killQuota = (3 + d).toInt().coerceAtMost(7)
+        killQuota = (6 + d).toInt().coerceAtMost(12)
         spawnCd = 1f
         worldSpeed = 40f
         host.sfx(Sfx.WARP)
@@ -364,10 +369,11 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
     private fun beginFleet(mega: Boolean) {
         clearField()
         state = GameState.FLEET; stateT = 0f
+        objective = if (mega) "PUNCH THROUGH TO THE DESTROYER" else "CLEAR THE SKY"
         fleetMega = mega
         saidLordFleet = false
         kills = 0
-        killQuota = (8 + 2 * d).toInt().coerceAtMost(18)
+        killQuota = (16 + 3 * d).toInt().coerceAtMost(34)
         spawnCd = 0.4f
         host.stopRumble()
         host.sfx(Sfx.WARP)
@@ -378,8 +384,9 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
     private fun beginDeck() {
         clearField()
         state = GameState.DECK; stateT = 0f
+        objective = "STRIP THE DESTROYER DECK"
         kills = 0
-        killQuota = (8 + 2 * d).toInt().coerceAtMost(16)
+        killQuota = (16 + 3 * d).toInt().coerceAtMost(30)
         spawnCd = 0.6f
         worldSpeed = 84f + 5f * d
         host.sfx(Sfx.WARP)
@@ -391,7 +398,8 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
     private fun beginBikes() {
         clearField()
         state = GameState.BIKES; stateT = 0f
-        rangeM = (20000f + 2000f * d).coerceAtMost(30000f)
+        objective = "REACH THE SHIELD GENERATOR"
+        rangeM = (40000f + 3000f * d).coerceAtMost(56000f)
         worldSpeed = 96f + 6f * d      // fastest run — but generous gaps
         barrierCd = 1.6f
         spawnCd = 2f
@@ -404,7 +412,8 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
     private fun beginCore() {
         clearField()
         state = GameState.CORE; stateT = 0f
-        rangeM = (16000f + 2000f * d).coerceAtMost(26000f)
+        objective = "NAVIGATE TO THE REACTOR CORE"
+        rangeM = (32000f + 3000f * d).coerceAtMost(48000f)
         worldSpeed = 60f + 4f * d      // tightest walls, gentlest speed
         barrierCd = 1.6f
         mazeStep = 0; mazeSide = 1f
@@ -505,6 +514,7 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
         beamT = (beamT + dt * 9f).coerceAtMost(1f)
 
         fireCd = (fireCd - dt).coerceAtLeast(0f)
+        if (isCombat()) autoFire()
         val k = 1f - exp(-11f * dt)
         rx += (rtx - rx) * k
         ry += (rty - ry) * k
@@ -598,7 +608,7 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
             f.y = f.baseY + f.ampY * cos(f.w2 * f.t)
             f.fireCd -= dt
             if (f.fireCd <= 0f && !f.leaving && f.z > -160f) {
-                f.fireCd = (2.6f - 0.25f * d).coerceAtLeast(1.1f) + rng.nextFloat()
+                f.fireCd = (3.4f - 0.2f * d).coerceAtLeast(1.8f) + rng.nextFloat() * 1.2f
                 if (f.kind == 1) host.sfx(Sfx.DROID, 1f, 0.6f)
                 fireBoltFrom(f.x, f.y, f.z, 24f + 3f * d + if (f.kind == 3) 10f else 0f)
                 host.sfx(Sfx.SAUCER_FIRE, if (f.kind == 2) 0.8f else 1.2f, 0.5f)
@@ -634,15 +644,15 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
         // nothing materializes under a parked reticle.
         val sx = if (rng.nextBoolean()) 1f else -1f
         val sy = if (rng.nextBoolean()) 1f else -1f
-        n.baseX = sx * (7f + rng.nextFloat() * 9f)
-        n.baseY = sy * (4f + rng.nextFloat() * 6f)
-        n.ampX = (if (kind == 1) 1.5f else 2.5f) + rng.nextFloat() * (if (kind == 3) 6f else 4f)
-        n.ampY = 1.5f + rng.nextFloat() * 3f
+        n.baseX = sx * (11f + rng.nextFloat() * 8f)   // 11..19, never near centre
+        n.baseY = sy * (5f + rng.nextFloat() * 6f)
+        n.ampX = 1.5f + rng.nextFloat() * 3f          // <= base, so the weave never crosses 0
+        n.ampY = 1.5f + rng.nextFloat() * 2.5f
         n.w1 = (if (kind == 2) 0.4f else 0.8f) + rng.nextFloat() * 1.2f
         n.w2 = 0.6f + rng.nextFloat() * 1.4f
         n.ph = rng.nextFloat() * 6.28f
         n.z = -260f - rng.nextFloat() * 40f
-        n.holdZ = (if (kind == 2) -60f else -34f) - rng.nextFloat() * 36f
+        n.holdZ = (if (kind == 2) -66f else -46f) - rng.nextFloat() * 34f
         n.fireCd = 1.2f + rng.nextFloat() * 1.6f
         n.hp = when (kind) { 2 -> 3; else -> 1 }
         host.sfx(if (kind == 1) Sfx.DROID else Sfx.SPAWN, 1.3f, 0.5f)
@@ -667,6 +677,13 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
     private fun isRunScene() =
         state == GameState.TRENCH || state == GameState.PORT ||
             state == GameState.BIKES || state == GameState.CORE
+
+    private fun isCombat() = when (state) {
+        GameState.FIGHTERS, GameState.DROIDS, GameState.FLEET,
+        GameState.SURFACE, GameState.WALKERS, GameState.DECK,
+        GameState.TRENCH, GameState.BIKES, GameState.CORE -> true
+        else -> false
+    }
 
     private fun updateBolts(dt: Float) {
         for (b in bolts) {
@@ -978,10 +995,10 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
 
     // ----------------------------------------------------------- shooting
 
-    /** One tap, one shot — the cannons answer to the pilot now. */
-    private fun fireShot() {
+    /** Auto-cannon: fires on its own at half the old cadence; aim is the skill. */
+    private fun autoFire() {
         if (fireCd > 0f) return
-        fireCd = 0.12f
+        fireCd = 0.30f              // half the original 0.15 s rate
         gunSide = !gunSide
         beamT = 0f
         beamX = rx; beamY = ry
@@ -989,7 +1006,7 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
         host.sfx(Sfx.FIRE, if (gunSide) 1.06f else 0.97f, 0.45f)
         for (f in fighters) {
             if (!f.alive || f.leaving) continue
-            val r = when (f.kind) { 1 -> 0.15f; 2 -> 0.20f; 3 -> 0.13f; else -> 0.16f }
+            val r = when (f.kind) { 1 -> 0.13f; 2 -> 0.19f; 3 -> 0.11f; else -> 0.13f }
             if (screenHit(f.x, f.y, f.z, r)) {
                 if (--f.hp > 0) {
                     host.sfx(Sfx.EXPL_S, 0.8f, 0.5f)

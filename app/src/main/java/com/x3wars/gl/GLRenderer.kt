@@ -1044,6 +1044,11 @@ class GLRenderer(private val game: Game) : GLSurfaceView.Renderer {
 
     private fun sceneHeader(s: String) {
         if (game.stateT < 2.2f) textC(s, 320f, 150f, 2.4f, 0.45f, 1f, 0.6f, 1f - game.stateT / 2.4f)
+        // The required objective lingers a little longer as a mission order.
+        if (game.stateT < 5f && game.objective.isNotEmpty()) {
+            val a = (1f - (game.stateT - 3f) / 2f).coerceIn(0f, 1f)
+            textC("OBJECTIVE: " + game.objective, 320f, 182f, 1.4f, 1f, 0.85f, 0.4f, a)
+        }
     }
 
     private fun killsLine() =
