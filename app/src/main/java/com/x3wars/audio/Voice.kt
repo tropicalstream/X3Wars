@@ -155,6 +155,13 @@ class Voice(private val context: Context) {
     }
 
     private fun sayOnThread(id: String, urgent: Boolean) {
+        if (id.startsWith("droid_")) {
+            if (urgent) { queue.clear(); stopCurrent() }
+            else if (isSpeaking || queue.isNotEmpty()) return
+            queue.add(id)
+            pump()
+            return
+        }
         val variants = phrases[id] ?: return
         if (variants.isEmpty()) return
         val idx = if (variants.size > 1) rng.nextInt(variants.size) else 0
@@ -174,6 +181,11 @@ class Voice(private val context: Context) {
     private fun pump() {
         if (isSpeaking) return
         val cid = queue.pollFirst() ?: return
+        if (cid.startsWith("droid_")) {
+            val name = cid.removePrefix("droid_")
+            runCatching { context.assets.openFd("droid/$name.mp3") }.getOrNull()?.let { playFd(it) }
+            return
+        }
         // Cached sources only. If neither exists (first-boot bake still running),
         // the line is silently skipped — never synthesized on the spot.
         if (hasAsset(cid)) {

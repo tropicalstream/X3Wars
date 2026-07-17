@@ -82,13 +82,13 @@ class GLRenderer(private val game: Game) : GLSurfaceView.Renderer {
         GLES30.glUseProgram(program)
 
         val run = isRun()
-        val bank = if (run) -game.rx * 10f else -game.rx * 4f
+        val bank = (if (run) -game.rx * 10f else -game.rx * 4f) + game.camRailRoll
         val shX = (rnd.nextFloat() - 0.5f) * 0.5f * game.shake
         val shY = (rnd.nextFloat() - 0.5f) * 0.5f * game.shake
         Matrix.setIdentityM(view, 0)
         Matrix.rotateM(view, 0, bank, 0f, 0f, 1f)
-        val camX = (if (run) game.shipX() else 0f) + shX
-        val camY = (if (run) game.shipY() else 0f) + shY
+        val camX = (if (run) game.shipX() else game.camRailX) + shX
+        val camY = (if (run) game.shipY() else game.camRailY) + shY
         Matrix.translateM(view, 0, -camX, -camY, 0f)
 
         Matrix.perspectiveM(proj, 0, 57.6f, aspect, 0.4f, 520f)
@@ -117,25 +117,29 @@ class GLRenderer(private val game: Game) : GLSurfaceView.Renderer {
         lines.reset(); fx.reset()
         when (game.state) {
             GameState.TITLE -> { buildStars(0.7f); buildStation(0f, 2f, -190f, 52f, game.time * 4f, 1f) }
-            GameState.BRIEFING -> buildStars(1f)
-            GameState.FIGHTERS -> { buildStars(1f); buildSwoopers(); buildBolts(); buildBeams(); buildAimReticle() }
+            GameState.BRIEFING -> { buildStars(1f); buildVista() }
+            GameState.FIGHTERS -> { buildStars(1f); buildVista(); buildSwoopers(); buildBolts(); buildBeams(); buildAimReticle() }
             GameState.DROIDS -> {
                 buildStars(0.9f)   // snowfall via game.snowMode
+                buildVista()
                 buildSnowfield(-6f)
                 buildSwoopers(); buildBolts(); buildBeams(); buildAimReticle()
             }
             GameState.FLEET -> {
                 buildStars(1f)
+                buildVista()
                 if (game.fleetMega) buildMegaShip()
                 buildSwoopers(); buildBolts(); buildBeams(); buildAimReticle()
             }
             GameState.SURFACE -> {
                 buildStars(0.5f)
+                buildVista()
                 buildGround(-6f, 0.25f, 1f, 0.45f, 0.30f)
                 buildTowers(); buildBolts(); buildBeams(); buildAimReticle()
             }
             GameState.WALKERS -> {
                 buildStars(0.9f)
+                buildVista()
                 buildSnowfield(-6f)
                 buildTowers(); buildBolts(); buildBeams(); buildAimReticle()
             }
@@ -176,6 +180,7 @@ class GLRenderer(private val game: Game) : GLSurfaceView.Renderer {
                 if (game.torpedoT >= 0f) buildTorpedoes()
             }
             GameState.MINIWIN -> buildForest()
+            GameState.DOCK -> { buildStars(0.5f); buildDockScene() }
             GameState.VICTORY -> buildVictory()
             GameState.GAMEOVER -> buildStars(0.25f)
         }
@@ -314,11 +319,12 @@ class GLRenderer(private val game: Game) : GLSurfaceView.Renderer {
         if (t >= 0.35f) return
         val a = (1f - t / 0.35f) * 0.9f
         val d = 30f
-        val ax = game.beamX * Game.TANX * d
-        val ay = game.beamY * Game.TANY * d
+        val cx = game.camRailX; val cy = game.camRailY
+        val ax = cx + game.beamX * Game.TANX * d
+        val ay = cy + game.beamY * Game.TANY * d
         val gx = if (game.beamRight) 5.4f else -5.4f
-        lines.line(gx, -4.4f, -2f, ax, ay, -d, 0.4f, 1f, 0.65f, a)
-        lines.line(-gx, -4.4f, -2f, ax, ay, -d, 0.4f, 1f, 0.65f, a * 0.55f)
+        lines.line(cx + gx, cy - 4.4f, -2f, ax, ay, -d, 0.4f, 1f, 0.65f, a)
+        lines.line(cx - gx, cy - 4.4f, -2f, ax, ay, -d, 0.4f, 1f, 0.65f, a * 0.55f)
         fx.v(ax, ay, -d, 0.7f, 1f, 0.8f, a)
     }
 
@@ -335,8 +341,8 @@ class GLRenderer(private val game: Game) : GLSurfaceView.Renderer {
 
     private fun buildAimReticle() {
         val d = 30f
-        val x = game.rx * Game.TANX * d
-        val y = game.ry * Game.TANY * d
+        val x = game.camRailX + game.rx * Game.TANX * d
+        val y = game.camRailY + game.ry * Game.TANY * d
         val s = 1.5f; val gpx = 0.65f
         val r = 0.35f; val g = 1f; val b = 0.5f; val a = 0.95f
         lines.line(x - s, y - s, -d, x - gpx, y - s, -d, r, g, b, a)
@@ -365,6 +371,120 @@ class GLRenderer(private val game: Game) : GLSurfaceView.Renderer {
             x += 8f
         }
         lines.line(-160f, y, -330f, 160f, y, -330f, r, g, b, alpha + 0.2f)
+    }
+
+    /**
+     * The scenic backdrop the rail sweeps past — each battle gets a horizon
+     * worth the flight: Yavin's ringed gas giant, Hoth's pale sun and aurora,
+     * Endor's mottled forest moon with the half-built station hanging beside.
+     */
+    private fun buildVista() {
+        when (game.level) {
+            Level.YAVIN -> {
+                // ringed gas giant, low on the left
+                val cx = -58f; val cy = 12f; val cz = -368f
+                ring(cx, cy, cz, 42f, 24, 0.9f, 0.55f, 0.35f, 0.5f)
+                ring(cx, cy, cz, 34f, 20, 0.9f, 0.5f, 0.3f, 0.22f)
+                var i = 0
+                while (i < 3) {
+                    val rr = 52f + i * 7f
+                    var px = cx + rr; var py = cy
+                    var k = 1
+                    while (k <= 18) {
+                        val an = k / 18f * 6.2832f
+                        val nx = cx + cos(an) * rr
+                        val ny = cy + sin(an) * rr * 0.22f
+                        lines.line(px, py, cz, nx, ny, cz, 1f, 0.75f, 0.45f, 0.35f - i * 0.09f)
+                        px = nx; py = ny
+                        k++
+                    }
+                    i++
+                }
+                // small jungle moon glinting far right
+                ring(64f, 22f, -350f, 6f, 10, 0.5f, 0.95f, 0.55f, 0.6f)
+            }
+            Level.HOTH -> {
+                // pale low sun with halo
+                ring(48f, 26f, -370f, 9f, 12, 1f, 1f, 1f, 0.75f)
+                ring(48f, 26f, -370f, 15f, 12, 0.85f, 0.92f, 1f, 0.22f)
+                // aurora curtains
+                var i = 0
+                while (i < 3) {
+                    var px = 0f; var py = 0f
+                    var k = 0
+                    while (k <= 16) {
+                        val x = -80f + k * 10f
+                        val y = 34f + i * 7f + sin(x * 0.07f + game.time * 0.5f + i) * 5f
+                        if (k > 0) lines.line(px, py, -360f, x, y, -360f, 0.4f, 1f, 0.7f, 0.16f + i * 0.04f)
+                        px = x; py = y
+                        k++
+                    }
+                    i++
+                }
+            }
+            Level.ENDOR -> {
+                // the forest moon, big and mottled
+                val cx = 52f; val cy = 18f; val cz = -368f
+                ring(cx, cy, cz, 26f, 22, 0.45f, 0.95f, 0.5f, 0.6f)
+                var i = 0
+                while (i < 4) {
+                    val rr = 6f + i * 5f
+                    ring(cx - 8f + i * 5f, cy - 4f + (i % 2) * 7f, cz, rr * 0.35f, 8, 0.4f, 0.85f, 0.45f, 0.25f)
+                    i++
+                }
+                // the unfinished station hanging in the sky
+                buildStation(-52f, 24f, -360f, 11f, game.time * 6f, 0.7f, unfinished = true)
+            }
+        }
+    }
+
+    /**
+     * The hangar: guide lights converging into a glowing bay, the carrier's
+     * hull above, clamps easing shut, shields refilling pip by pip while the
+     * story crawls past the canopy.
+     */
+    private fun buildDockScene() {
+        val t = game.stateT
+        val r = 0.45f; val g = 0.8f; val b = 1f
+        // approach: the bay frame grows toward us for the first seconds
+        val approach = (t / 6f).coerceIn(0f, 1f)
+        val z = -170f + approach * 130f          // -170 -> -40
+        val w = 26f; val h = 12f
+        val yOff = -4f
+        // carrier hull above the bay
+        lines.line(-w * 2.2f, yOff + h + 6f, z - 40f, w * 2.2f, yOff + h + 6f, z - 40f, r, g, b, 0.5f)
+        lines.line(-w * 2.2f, yOff + h + 6f, z - 40f, -w * 1.4f, yOff + h, z, r, g, b, 0.4f)
+        lines.line(w * 2.2f, yOff + h + 6f, z - 40f, w * 1.4f, yOff + h, z, r, g, b, 0.4f)
+        // the bay mouth
+        lines.line(-w, yOff - h, z, w, yOff - h, z, r, g, b, 0.9f)
+        lines.line(-w, yOff + h, z, w, yOff + h, z, r, g, b, 0.9f)
+        lines.line(-w, yOff - h, z, -w, yOff + h, z, r, g, b, 0.9f)
+        lines.line(w, yOff - h, z, w, yOff + h, z, r, g, b, 0.9f)
+        // interior depth lines
+        lines.line(-w, yOff - h, z, -w * 0.55f, yOff - h * 0.55f, z - 55f, r, g, b, 0.4f)
+        lines.line(w, yOff - h, z, w * 0.55f, yOff - h * 0.55f, z - 55f, r, g, b, 0.4f)
+        lines.line(-w, yOff + h, z, -w * 0.55f, yOff + h * 0.55f, z - 55f, r, g, b, 0.4f)
+        lines.line(w, yOff + h, z, w * 0.55f, yOff + h * 0.55f, z - 55f, r, g, b, 0.4f)
+        // guide lights: twin converging rows, blinking in sequence
+        var i = 0
+        while (i < 7) {
+            val gz = z + 8f + i * 9f
+            if (gz < -6f) {
+                val gw = w * (0.35f + 0.09f * i)
+                val on = ((game.time * 4f).toInt() + i) % 7 < 3
+                val a = if (on) 0.95f else 0.3f
+                fx.v(-gw, yOff - h * 0.8f, gz, 0.4f, 1f, 0.6f, a)
+                fx.v(gw, yOff - h * 0.8f, gz, 0.4f, 1f, 0.6f, a)
+            }
+            i++
+        }
+        // docking clamps ease shut as we settle
+        val clamp = ((t - 5f) / 3f).coerceIn(0f, 1f)
+        if (clamp > 0f) {
+            val cx = w * (1f - clamp * 0.55f)
+            lines.line(-cx, yOff - h * 0.2f, -30f, -cx + 4f, yOff, -30f, 1f, 0.75f, 0.3f, 0.8f)
+            lines.line(cx, yOff - h * 0.2f, -30f, cx - 4f, yOff, -30f, 1f, 0.75f, 0.3f, 0.8f)
+        }
     }
 
     /**
@@ -950,6 +1070,10 @@ class GLRenderer(private val game: Game) : GLSurfaceView.Renderer {
         val g = game
 
         if (g.hitFlash > 0.01f) frame(6f, 1f, 0.2f, 0.15f, g.hitFlash * 0.9f)
+        if (g.r2FlashT > 0.01f) {
+            val a = g.r2FlashT.coerceAtMost(1f)
+            textC("R2 RESTORES SHIELDS +2", 320f, 210f, 1.7f, 0.4f, 1f, 0.9f, a)
+        }
         if (g.whiteFlash > 0.01f) {
             var i = 0
             while (i < 16) {
@@ -963,8 +1087,8 @@ class GLRenderer(private val game: Game) : GLSurfaceView.Renderer {
             GameState.TITLE -> {
                 textC("X3WARS", 320f, 150f, 6f, 0.45f, 1f, 0.6f)
                 textC("YAVIN - HOTH - ENDOR", 320f, 195f, 1.6f, 0.6f, 0.85f, 1f)
-                textC("SWIPE TO AIM - TAP TO FIRE", 320f, 300f, 1.3f, 0.75f, 0.8f, 0.9f)
-                textC("AT EACH BATTLES HEART - TAP FOR TORPEDOES", 320f, 322f, 1.3f, 0.75f, 0.8f, 0.9f)
+                textC("SWIPE TO AIM - CANNONS AUTO-FIRE", 320f, 300f, 1.3f, 0.75f, 0.8f, 0.9f)
+                textC("TAP FOR TORPEDOES AT EACH BATTLES HEART", 320f, 322f, 1.3f, 0.75f, 0.8f, 0.9f)
                 val blink = 0.5f + 0.5f * sin(g.time * 5f)
                 textC("TAP TO LAUNCH", 320f, 400f, 2.2f, 0.45f, 1f, 0.6f, blink)
                 textC("HIGH " + g.hiScore, 320f, 435f, 1.3f, 1f, 0.85f, 0.4f)
@@ -974,11 +1098,7 @@ class GLRenderer(private val game: Game) : GLSurfaceView.Renderer {
                 textC(g.briefSub, 320f, 250f, 1.7f, 1f, 0.85f, 0.4f)
                 hudCommon()
             }
-            GameState.FIGHTERS -> {
-                sceneHeader("INTERCEPTORS")
-                if (g.part == 1 && g.stateT < 6f) textC("TAP TO FIRE", 320f, 180f, 1.5f, 1f, 0.85f, 0.4f, 0.8f)
-                killsLine(); hudCommon()
-            }
+            GameState.FIGHTERS -> { sceneHeader("INTERCEPTORS"); killsLine(); hudCommon() }
             GameState.DROIDS -> { sceneHeader("HUNT THE PROBES"); killsLine(); hudCommon() }
             GameState.WALKERS -> { sceneHeader("THE WALKERS"); killsLine(); hudCommon() }
             GameState.FLEET -> {
@@ -1010,6 +1130,23 @@ class GLRenderer(private val game: Game) : GLSurfaceView.Renderer {
                 centerCross()
                 buildTargeting()
                 hudCommon()
+            }
+            GameState.DOCK -> {
+                buildCrawl()
+                // shield pips refill one by one down in the corner
+                val pips = (2f + g.stateT * 1.2f).toInt().coerceAtMost(8)
+                var i = 0
+                while (i < pips) {
+                    val x = 16f + i * 16f
+                    hud.line(x, 470f, 0f, x + 10f, 470f, 0f, 0.45f, 1f, 0.6f, 0.95f)
+                    hud.line(x, 465f, 0f, x, 475f, 0f, 0.45f, 1f, 0.6f, 0.95f)
+                    i++
+                }
+                text("DOCKED - REPAIRS UNDERWAY", 16f, 452f, 1.2f, 0.5f, 0.85f, 1f, 0.8f)
+                if (g.stateT > 5f) {
+                    val blink = 0.4f + 0.3f * sin(g.time * 4f)
+                    textC("TAP TO LAUNCH", 320f, 452f, 1.2f, 0.45f, 1f, 0.6f, blink)
+                }
             }
             GameState.MINIWIN -> {
                 textC("THE SHIELD IS DOWN", 320f, 210f, 2.6f, 1f, 0.9f, 0.5f)
@@ -1083,6 +1220,35 @@ class GLRenderer(private val game: Game) : GLSurfaceView.Renderer {
         hud.line(326f, 240f, 0f, 340f, 240f, 0f, r, g2, b, 0.9f)
         hud.line(320f, 224f, 0f, 320f, 234f, 0f, r, g2, b, 0.9f)
         hud.line(320f, 246f, 0f, 320f, 256f, 0f, r, g2, b, 0.9f)
+    }
+
+    /**
+     * The story crawl: golden lines rising from the canopy toward the stars,
+     * shrinking and fading as they climb — one new line about every two
+     * seconds, sized to stay readable through the waveguide.
+     */
+    private fun buildCrawl() {
+        val g = game
+        val progress = (g.stateT - 1.5f) * 0.09f   // ~11 s bottom-to-top per line
+        drawCrawlLine(g.crawlTitle, progress + 0.09f, 3.0f, 1f, 0.8f, 0.25f)
+        var i = 0
+        while (i < g.crawlLines.size) {
+            drawCrawlLine(g.crawlLines[i], progress - (i + 1) * 0.09f, 2.1f, 1f, 0.85f, 0.35f)
+            i++
+        }
+    }
+
+    /** One crawl line at param t: 0 = entering low and large, 1 = far and gone. */
+    private fun drawCrawlLine(s: String, t: Float, baseScale: Float, r: Float, g2: Float, b: Float) {
+        if (s.isEmpty() || t < 0f || t > 1f) return
+        val y = 430f - t * 350f
+        val sc = baseScale * (1f - t * 0.72f)
+        val a = when {
+            t < 0.06f -> t / 0.06f
+            t > 0.82f -> (1f - t) / 0.18f
+            else -> 1f
+        }
+        textC(s, 320f, y, sc, r, g2, b, a)
     }
 
     private fun buildTargeting() {

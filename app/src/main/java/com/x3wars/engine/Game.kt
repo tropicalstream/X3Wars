@@ -31,7 +31,9 @@ enum class GameState {
     FIGHTERS, SURFACE, TRENCH,          // yavin (FIGHTERS doubles for endor space via FLEET)
     DROIDS, WALKERS, FLEET, DECK,       // hoth
     BIKES, CORE,                        // endor runs
-    PORT, MINIWIN, VICTORY, GAMEOVER
+    PORT, MINIWIN, VICTORY,
+    DOCK,                               // between levels: hangar, repairs, story crawl
+    GAMEOVER
 }
 
 enum class Level { YAVIN, HOTH, ENDOR }
@@ -98,6 +100,7 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
 
     companion object {
         const val AIM_STEP = 0.30f
+        const val AIM_IMPULSE = 1.7f   // cursor flick strength (units/s)
         const val TANX = 0.72f
         const val TANY = 0.55f
         const val TR_X = 3.1f
@@ -132,12 +135,19 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
 
     var rx = 0f; private set
     var ry = 0f; private set
-    private var rtx = 0f
-    private var rty = 0f
+    private var rvx = 0f              // cursor-style velocity, damped
+    private var rvy = 0f
 
     var shake = 0f; private set
     var hitFlash = 0f; private set
     var whiteFlash = 0f; private set
+
+    // The guided rail: a slow scenic sweep of the camera through each vista.
+    // Combat aim math subtracts it, so the skirmish is untouched.
+    var camRailX = 0f; private set
+    var camRailY = 0f; private set
+    var camRailRoll = 0f; private set
+    private var railT = 0f
 
     val fighters = Array(MAX_FIGHTERS) { Fighter() }
     val bolts = Array(MAX_BOLTS) { Bolt() }
@@ -145,7 +155,7 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
     val barriers = Array(MAX_BARRIERS) { Barrier() }
     val particles = Array(MAX_PARTICLES) { Particle() }
     val stars = FloatArray(160 * 3)
-    var snowMode = false; private set
+    var snowMode = false
 
     var kills = 0; private set
     var killQuota = 8; private set
@@ -177,9 +187,30 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
     private var saidScene = false
     private var mazeStep = 0
     private var mazeSide = 1f
+    private var r2Used = false
+    var r2FlashT = 0f; private set        // HUD banner timer for the repair
+    private var saidHalfK = false
+    private var saidNearK = false
+    private var saidRunHalf = false
+    private var runStartRange = 1f
+    var crawlTitle = ""; private set
+    var crawlLines: List<String> = emptyList(); private set
+    var dockDur = 20f; private set
 
     /** Difficulty scalar: 0 on the first campaign, +1 each full cycle. */
     private val d get() = (part - 1).toFloat()
+
+    private fun updateRail(dt: Float) {
+        railT += dt
+        val open = !isRunScene() && state != GameState.DOCK
+        if (open) {
+            camRailX = 5.5f * sin(railT * 0.50f)
+            camRailY = 2.4f * sin(railT * 0.31f + 1.3f)
+            camRailRoll = 3.5f * sin(railT * 0.21f)
+        } else {
+            camRailX *= exp(-2f * dt); camRailY *= exp(-2f * dt); camRailRoll *= exp(-2f * dt)
+        }
+    }
 
     fun boot() {
         hiScore = store.highScore
@@ -188,20 +219,38 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
         host.music("title")
     }
 
+    /** Screenshot/debug warp: jump straight to a state via adb intent extra. */
+    fun debugWarp(where: String) {
+        startGame()
+        when (where) {
+            "fighters" -> beginFighters()
+            "surface" -> beginSurface()
+            "trench" -> beginTrench()
+            "port" -> { beginTrench(); beginPort(PORT_EXHAUST); portZ = -60f }
+            "droids" -> { level = Level.HOTH; snowMode = true; beginDroids() }
+            "walkers" -> { level = Level.HOTH; snowMode = true; beginWalkers() }
+            "fleet" -> { level = Level.HOTH; beginFleet(mega = true) }
+            "deck" -> { level = Level.HOTH; beginDeck() }
+            "bikes" -> { level = Level.ENDOR; beginBikes() }
+            "core" -> { level = Level.ENDOR; beginCore() }
+            "victory" -> beginVictory()
+            "dock" -> beginDock()
+            "dockhoth" -> { level = Level.HOTH; beginDock() }
+        }
+    }
+
     // ------------------------------------------------------------- input
 
-    /** dir: 0 up, 1 down, 2 left, 3 right — one reticle step per swipe. */
+    /** dir: 0 up, 1 down, 2 left, 3 right — each swipe is a cursor flick. */
     fun aim(dir: Int) {
         if (state == GameState.TITLE || state == GameState.GAMEOVER) return
         when (dir) {
-            0 -> rty += AIM_STEP
-            1 -> rty -= AIM_STEP
-            2 -> rtx -= AIM_STEP
-            3 -> rtx += AIM_STEP
+            0 -> rvy += AIM_IMPULSE
+            1 -> rvy -= AIM_IMPULSE
+            2 -> rvx -= AIM_IMPULSE
+            3 -> rvx += AIM_IMPULSE
         }
-        rtx = rtx.coerceIn(-1f, 1f)
-        rty = rty.coerceIn(-1f, 1f)
-        host.sfx(Sfx.TURN, 1.4f, 0.35f)
+        host.sfx(Sfx.TURN, 1.4f, 0.3f)
     }
 
     fun tap() {
@@ -212,6 +261,7 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
                 host.music("title")
             }
             GameState.PORT -> tryTorpedo()
+            GameState.DOCK -> if (stateT > 5f) advanceLevel()
             else -> {}
         }
     }
@@ -235,7 +285,9 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
     private fun beginBriefing() {
         clearField()
         state = GameState.BRIEFING; stateT = 0f
-        rtx = 0f; rty = 0f
+        rx = 0f; ry = 0f; rvx = 0f; rvy = 0f
+        r2Used = false
+        saidHalfK = false; saidNearK = false; saidRunHalf = false
         snowMode = level == Level.HOTH
         briefTitle = if (part == 1) levelName() else "PART $part  " + levelName()
         briefSub = when (level) {
@@ -276,6 +328,9 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
     private fun nextScene() {
         // Objective cleared — a little breathing room restored.
         if (shields < 6) shields++
+        host.say("sage_forward")
+        host.say("droid_acknowledged")
+        saidHalfK = false; saidNearK = false; saidRunHalf = false
         sceneIdx++
         val last = when (level) {
             Level.YAVIN -> 3   // fighters, surface, trench(+port)
@@ -330,6 +385,7 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
         state = GameState.TRENCH; stateT = 0f
         objective = "REACH THE EXHAUST PORT"
         rangeM = if (rerun) 8000f else (48000f + 3000f * d).coerceAtMost(64000f)
+        runStartRange = rangeM
         // Slow enough to read the barrier gaps and steer through them.
         worldSpeed = 66f + 4f * d
         barrierCd = 1.8f
@@ -400,6 +456,7 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
         state = GameState.BIKES; stateT = 0f
         objective = "REACH THE SHIELD GENERATOR"
         rangeM = (40000f + 3000f * d).coerceAtMost(56000f)
+        runStartRange = rangeM
         worldSpeed = 96f + 6f * d      // fastest run — but generous gaps
         barrierCd = 1.6f
         spawnCd = 2f
@@ -414,6 +471,7 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
         state = GameState.CORE; stateT = 0f
         objective = "NAVIGATE TO THE REACTOR CORE"
         rangeM = (32000f + 3000f * d).coerceAtMost(48000f)
+        runStartRange = rangeM
         worldSpeed = 60f + 4f * d      // tightest walls, gentlest speed
         barrierCd = 1.6f
         mazeStep = 0; mazeSide = 1f
@@ -481,6 +539,65 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
         }
     }
 
+    /** Between levels: glide into the hangar, patch the ship, roll the story. */
+    private fun beginDock() {
+        clearField()
+        state = GameState.DOCK; stateT = 0f
+        shields = 8
+        host.stopRumble()
+        host.music("title")              // the main theme, as ordered
+        host.say("sage_dock")
+        host.say("droid_excited")
+        val n = part + (if (level == Level.ENDOR) 1 else 0)
+        crawlTitle = when (level) {
+            Level.YAVIN -> "THE STATION HAS FALLEN"
+            Level.HOTH -> "THE DAGGER IS BROKEN"
+            Level.ENDOR -> "PART $n BEGINS"
+        }
+        crawlLines = when (level) {
+            Level.YAVIN -> listOf(
+                "THE GREAT BATTLE STATION IS DUST",
+                "SCATTERED ACROSS THE YAVIN SKY.",
+                "",
+                "BUT THE EMPIRE ANSWERS IN COLD FURY.",
+                "PROBE SIGNALS TRACE THE FLEEING",
+                "SQUADRON TO A FROZEN WORLD AT THE",
+                "EDGE OF THE CHARTS.",
+                "",
+                "SHIELDS PATCHED AND TORPEDOES",
+                "RACKED, THE SQUADRON FLIES",
+                "TO THE SNOWS OF HOTH.",
+            )
+            Level.HOTH -> listOf(
+                "THE DAGGER DESTROYER BURNS",
+                "IN THE ICE-BRIGHT SKY.",
+                "",
+                "YET SPIES WHISPER OF A NEW STATION",
+                "GROWING ABOVE A GREEN FOREST MOON,",
+                "GUARDED BY A SHIELD CAST FROM",
+                "THE TREES BELOW.",
+                "",
+                "THE SQUADRON BANKS FOR ENDOR -",
+                "FIRST THE FOREST, THEN THE SKY,",
+                "THEN THE HEART OF THE MACHINE.",
+            )
+            Level.ENDOR -> listOf(
+                "THE UNFINISHED STATION IS GONE,",
+                "ITS CORE A FADING STAR.",
+                "",
+                "THE GALAXY BREATHES FREE - BUT THE",
+                "EMPIRE REBUILDS, FASTER AND ANGRIER,",
+                "AND THE OLD BATTLES RETURN",
+                "WITH NEW TEETH.",
+                "",
+                "REST WHILE THE CLAMPS HOLD.",
+                "YAVIN WAITS AGAIN.",
+            )
+        }
+        // Pacing: intro beat + one beat per line + reading tail.
+        dockDur = 7f + crawlLines.size * 1.9f
+    }
+
     private fun gameOver() {
         state = GameState.GAMEOVER; stateT = 0f
         host.stopRumble()
@@ -511,13 +628,17 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
         shake = (shake - dt * 2.4f).coerceAtLeast(0f)
         hitFlash = (hitFlash - dt * 1.8f).coerceAtLeast(0f)
         whiteFlash = (whiteFlash - dt * 1.1f).coerceAtLeast(0f)
+        r2FlashT = (r2FlashT - dt).coerceAtLeast(0f)
         beamT = (beamT + dt * 9f).coerceAtMost(1f)
 
         fireCd = (fireCd - dt).coerceAtLeast(0f)
         if (isCombat()) autoFire()
-        val k = 1f - exp(-11f * dt)
-        rx += (rtx - rx) * k
-        ry += (rty - ry) * k
+        // The reticle glides like a cursor: flicks add velocity, drag bleeds it.
+        rx = (rx + rvx * dt).coerceIn(-1f, 1f)
+        ry = (ry + rvy * dt).coerceIn(-1f, 1f)
+        val drag = exp(-4.2f * dt)
+        rvx *= drag; rvy *= drag
+        updateRail(dt)
 
         updateParticles(dt)
 
@@ -552,7 +673,11 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
             GameState.CORE -> updateRun(dt, barrierKind = 2) { beginPort(PORT_CORE) }
             GameState.PORT -> updatePort(dt)
             GameState.MINIWIN -> if (stateT > 3.2f) nextScene()
-            GameState.VICTORY -> if (stateT > 6f) advanceLevel()
+            GameState.VICTORY -> if (stateT > 6f) beginDock()
+            GameState.DOCK -> {
+                updateStars(dt, 6f)
+                if (stateT > dockDur) advanceLevel()
+            }
             GameState.GAMEOVER -> updateStars(dt, 8f)
         }
     }
@@ -615,11 +740,23 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
             }
         }
         updateBolts(dt)
+        checkQuotaCalls()
         if (kills >= killQuota) {
             var quiet = true
             for (f in fighters) if (f.alive) { quiet = false; break }
             if (quiet) for (b in bolts) if (b.alive) { quiet = false; break }
             if (quiet) sceneCleared()
+        }
+    }
+
+    private fun checkQuotaCalls() {
+        if (!saidHalfK && killQuota >= 6 && kills * 2 >= killQuota) {
+            saidHalfK = true
+            host.say("sage_half")
+        }
+        if (!saidNearK && killQuota >= 6 && killQuota - kills in 1..2) {
+            saidNearK = true
+            host.say("sage_near")
         }
     }
 
@@ -664,10 +801,10 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
         val n = b ?: return
         n.alive = true
         n.x = x; n.y = y; n.z = z
-        // Aimed at the ship — which in a run scene is off-centre.
+        // Aimed at the ship — off-centre in runs, riding the rail elsewhere.
         val run = isRunScene()
-        val tx = (if (run) shipX() else 0f) + (rng.nextFloat() * 2f - 1f) * 1.6f
-        val ty = (if (run) shipY() else 0f) + (rng.nextFloat() * 2f - 1f) * 1.2f
+        val tx = (if (run) shipX() else camRailX) + (rng.nextFloat() * 2f - 1f) * 1.6f
+        val ty = (if (run) shipY() else camRailY) + (rng.nextFloat() * 2f - 1f) * 1.2f
         val dd = -z
         n.vx = (tx - x) / dd * speed
         n.vy = (ty - y) / dd * speed
@@ -721,6 +858,7 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
         }
         stepTowers(dt, worldSpeed + 16f)
         updateBolts(dt)
+        checkQuotaCalls()
         if (!saidScene && stateT > 16f) { saidScene = true; host.say("pilot_deck_close") }
         if (kills >= killQuota) beginVictory()
     }
@@ -753,6 +891,7 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
             }
         }
         updateBolts(dt)
+        checkQuotaCalls()
         if (kills >= killQuota) {
             var quiet = true
             for (t in towers) if (t.alive) { quiet = false; break }
@@ -836,6 +975,7 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
             }
         }
         updateBolts(dt)
+        if (!saidRunHalf && rangeM < runStartRange * 0.5f) { saidRunHalf = true; host.say("sage_steady") }
         if (rangeM < 5200f && !lastAlmost) { lastAlmost = true; host.say("pilot_almost") }
         if (rangeM <= 0f) onArrive()
     }
@@ -881,6 +1021,7 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
             }
         }
         updateBolts(dt)
+        if (!saidRunHalf && rangeM < runStartRange * 0.5f) { saidRunHalf = true; host.say("sage_steady") }
         if (rangeM < 5200f && !lastAlmost) { lastAlmost = true; host.say("pilot_generator") }
         if (rangeM <= 0f) beginPort(PORT_GENERATOR)
     }
@@ -1071,8 +1212,8 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
         if (z > -3f || z < -140f) return false
         val run = isRunScene()
         val dd = -z
-        val ox = if (run) shipX() else 0f
-        val oy = if (run) shipY() else 0f
+        val ox = if (run) shipX() else camRailX
+        val oy = if (run) shipY() else camRailY
         val ax = if (run) 0f else rx
         val ay = if (run) 0f else ry
         val dx = ((x - ox) / dd) / TANX - ax
@@ -1085,7 +1226,20 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
         shields--
         shake = 1f; hitFlash = 1f
         host.sfx(Sfx.EXPL_L, 1.3f, 0.9f)
-        if (shields < 0) gameOver() else if (shields <= 2) host.say("pilot_hit")
+        // The little droid patches the ship — two cells, once per level,
+        // arriving exactly when things look grim.
+        if (shields <= 1 && !r2Used) {
+            r2Used = true
+            shields = (shields + 2).coerceAtLeast(2)
+            r2FlashT = 3f
+            host.sfx(Sfx.LIFE, 1.1f, 0.9f)
+            host.say("droid_excited")
+            return
+        }
+        if (shields < 0) gameOver() else if (shields <= 2) {
+            host.say("pilot_hit")
+            host.say("droid_worried")
+        }
     }
 
     // ---------------------------------------------------------- particles

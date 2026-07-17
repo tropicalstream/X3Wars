@@ -86,5 +86,25 @@
   "lord_walkers": "My walkers do not hurry. They do not need to. Nothing you have can stop them.",
   "lord_fleet": "You approach my flagship. Bold. Futile. I will accept your surrender... or your ashes.",
   "lord_core": "You dare crawl inside my station. Then it shall be your tomb.",
-  "lord_fall": "Extinguished. As every rebellion must be. Your spark was... insufficient."
+  "lord_fall": "Extinguished. As every rebellion must be. Your spark was... insufficient.",
+  "sage_half": [
+    "Half of them, fallen they are. Steady your breathing, and continue.",
+    "Good, this progress is. Waver not."
+  ],
+  "sage_near": [
+    "Few now remain. Gentle and certain, your last shots must be.",
+    "Nearly finished, this task is. Calm, stay."
+  ],
+  "sage_steady": [
+    "Behind you, half the road lies. Forward, always forward.",
+    "Long, the path seemed. Shorter now, it grows. Fly on."
+  ],
+  "sage_forward": [
+    "Cleared, the way is. Onward we go, hmm.",
+    "Well done, this was. The next trial waits — ready, you are."
+  ],
+  "sage_dock": [
+    "Rest now, young one. Mended, your ship will be. Listen — the story, it continues.",
+    "Safe in the hangar, we are. Breathe, repair, remember. Then — onward."
+  ]
 }

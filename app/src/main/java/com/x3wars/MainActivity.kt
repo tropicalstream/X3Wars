@@ -64,6 +64,8 @@ class MainActivity : Activity(), GameHost {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         hideSystemBars()
         game.boot()
+        // Screenshot/debug warp: adb shell am start ... --es warp <state>
+        intent.getStringExtra("warp")?.let { w -> glView.queueEvent { game.debugWarp(w) } }
     }
 
     // ------------------------------------------------------------ GameHost
