@@ -307,10 +307,68 @@ class GLRenderer(private val game: Game) : GLSurfaceView.Renderer {
     private fun buildBolts() {
         for (b in game.bolts) {
             if (!b.alive) continue
-            fx.v(b.x, b.y, b.z, 1f, 0.5f, 0.2f, 1f)
-            lines.line(b.x, b.y, b.z, b.x - b.vx * 0.06f, b.y - b.vy * 0.06f, b.z - b.vz * 0.06f,
-                1f, 0.35f, 0.12f, 0.8f)
-            ring(b.x, b.y, b.z, 0.34f, 6, 1f, 0.4f, 0.15f, 0.9f)
+            when (b.kind) {
+                1 -> buildIonArc(b)
+                2 -> buildMissile(b)
+                else -> {
+                    fx.v(b.x, b.y, b.z, 1f, 0.5f, 0.2f, 1f)
+                    lines.line(b.x, b.y, b.z, b.x - b.vx * 0.06f, b.y - b.vy * 0.06f, b.z - b.vz * 0.06f,
+                        1f, 0.35f, 0.12f, 0.8f)
+                    ring(b.x, b.y, b.z, 0.34f, 6, 1f, 0.4f, 0.15f, 0.9f)
+                }
+            }
+        }
+    }
+
+    /** Probe-droid fire: a crackling blue-white ion arc, not a clean bolt. */
+    private fun buildIonArc(b: com.x3wars.engine.Bolt) {
+        val t = game.time * 31f
+        var px = b.x - b.vx * 0.10f
+        var py = b.y - b.vy * 0.10f
+        var pz = b.z - b.vz * 0.10f
+        var i = 1
+        while (i <= 3) {
+            val f = i / 3f
+            val jx = sin(t + i * 2.4f) * 0.28f
+            val jy = cos(t * 1.3f + i * 1.7f) * 0.28f
+            val nx = b.x - b.vx * 0.10f * (1f - f) + jx * (if (i < 3) 1f else 0f)
+            val ny = b.y - b.vy * 0.10f * (1f - f) + jy * (if (i < 3) 1f else 0f)
+            val nz = b.z - b.vz * 0.10f * (1f - f)
+            lines.line(px, py, pz, nx, ny, nz, 0.55f, 0.8f, 1f, 0.9f)
+            px = nx; py = ny; pz = nz
+            i++
+        }
+        fx.v(b.x, b.y, b.z, 0.75f, 0.9f, 1f, 1f)
+        // flickering halo
+        val flick = 0.5f + 0.5f * sin(t * 1.9f)
+        ring(b.x, b.y, b.z, 0.30f + 0.12f * flick, 4, 0.5f, 0.8f, 1f, 0.7f)
+    }
+
+    /** A homing missile: finned dart, flame plume, smoky wake — shoot it down. */
+    private fun buildMissile(b: com.x3wars.engine.Bolt) {
+        // body along the velocity
+        val sp = kotlin.math.sqrt(b.vx * b.vx + b.vy * b.vy + b.vz * b.vz).coerceAtLeast(0.01f)
+        val dx = b.vx / sp; val dy = b.vy / sp; val dz = b.vz / sp
+        val L = 1.1f
+        val nx = b.x + dx * L * 0.5f; val ny = b.y + dy * L * 0.5f; val nz = b.z + dz * L * 0.5f
+        val tx = b.x - dx * L * 0.5f; val ty = b.y - dy * L * 0.5f; val tz = b.z - dz * L * 0.5f
+        lines.line(nx, ny, nz, tx, ty, tz, 1f, 0.75f, 0.35f, 1f)
+        // fins
+        lines.line(tx, ty, tz, tx + 0.3f, ty + 0.3f, tz, 1f, 0.7f, 0.3f, 0.9f)
+        lines.line(tx, ty, tz, tx - 0.3f, ty + 0.3f, tz, 1f, 0.7f, 0.3f, 0.9f)
+        lines.line(tx, ty, tz, tx, ty - 0.38f, tz, 1f, 0.7f, 0.3f, 0.9f)
+        fx.v(nx, ny, nz, 1f, 0.9f, 0.6f, 1f)
+        // flame plume flickering behind
+        val fl = 0.6f + 0.4f * sin(game.time * 40f)
+        lines.line(tx, ty, tz, tx - dx * 0.9f * fl, ty - dy * 0.9f * fl, tz - dz * 0.9f * fl,
+            1f, 0.55f, 0.15f, 0.95f)
+        fx.v(tx - dx * 0.5f, ty - dy * 0.5f, tz - dz * 0.5f, 1f, 0.6f, 0.2f, 0.8f * fl)
+        // smoky wake dots
+        var i = 1
+        while (i <= 3) {
+            fx.v(tx - dx * (1f + i * 0.8f), ty - dy * (1f + i * 0.8f), tz - dz * (1f + i * 0.8f),
+                0.6f, 0.6f, 0.65f, 0.35f / i)
+            i++
         }
     }
 

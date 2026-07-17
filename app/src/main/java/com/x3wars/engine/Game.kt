@@ -62,8 +62,10 @@ class Fighter {
 }
 
 class Bolt {
+    var kind = 0        // 0 bolt, 1 droid ion arc, 2 homing missile
     var x = 0f; var y = 0f; var z = 0f
     var vx = 0f; var vy = 0f; var vz = 0f
+    var warned = false  // proximity ping fired (missiles)
     var alive = false
 }
 
@@ -708,7 +710,8 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
         spawnCd -= dt
         var aliveCount = 0
         for (f in fighters) if (f.alive) aliveCount++
-        val want = (2 + (d / 2).toInt() + if (state == GameState.FLEET) 1 else 0).coerceAtMost(6)
+        val want = (2 + (d / 2).toInt() +
+            when (state) { GameState.FLEET -> 1; GameState.DROIDS -> 1; else -> 0 }).coerceAtMost(6)
         if (spawnCd <= 0f && aliveCount < want && kills + aliveCount < killQuota) {
             spawner()
             spawnCd = 0.7f + rng.nextFloat() * 0.9f
@@ -733,9 +736,12 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
             f.y = f.baseY + f.ampY * cos(f.w2 * f.t)
             f.fireCd -= dt
             if (f.fireCd <= 0f && !f.leaving && f.z > -160f) {
-                f.fireCd = (3.4f - 0.2f * d).coerceAtLeast(1.8f) + rng.nextFloat() * 1.2f
+                val hoth = state == GameState.DROIDS       // 25% harder up north
+                f.fireCd = ((3.4f - 0.2f * d).coerceAtLeast(1.8f) + rng.nextFloat() * 1.2f) *
+                    (if (hoth) 0.8f else 1f)
                 if (f.kind == 1) host.sfx(Sfx.DROID, 1f, 0.6f)
-                fireBoltFrom(f.x, f.y, f.z, 24f + 3f * d + if (f.kind == 3) 10f else 0f)
+                val sp = (24f + 3f * d + if (f.kind == 3) 10f else 0f) * (if (hoth) 1.25f else 1f)
+                fireBoltFrom(f.x, f.y, f.z, sp, if (f.kind == 1) 1 else 0)
                 host.sfx(Sfx.SAUCER_FIRE, if (f.kind == 2) 0.8f else 1.2f, 0.5f)
             }
         }
@@ -795,11 +801,13 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
         host.sfx(if (kind == 1) Sfx.DROID else Sfx.SPAWN, 1.3f, 0.5f)
     }
 
-    private fun fireBoltFrom(x: Float, y: Float, z: Float, speed: Float) {
+    private fun fireBoltFrom(x: Float, y: Float, z: Float, speed: Float, kind: Int = 0) {
         var b: Bolt? = null
         for (c in bolts) if (!c.alive) { b = c; break }
         val n = b ?: return
         n.alive = true
+        n.kind = kind
+        n.warned = false
         n.x = x; n.y = y; n.z = z
         // Aimed at the ship — off-centre in runs, riding the rail elsewhere.
         val run = isRunScene()
@@ -823,15 +831,31 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
     }
 
     private fun updateBolts(dt: Float) {
+        val run = isRunScene()
+        val tx = if (run) shipX() else camRailX
+        val ty = if (run) shipY() else camRailY
         for (b in bolts) {
             if (!b.alive) continue
+            if (b.kind == 2) {
+                // Homing: the missile keeps correcting toward the ship. Slow
+                // enough to shoot down — and it sings out as it closes.
+                val d2 = -b.z
+                if (d2 > 4f) {
+                    val want = 1.4f * (tx - b.x) * b.vz / d2
+                    val wantY = 1.4f * (ty - b.y) * b.vz / d2
+                    b.vx += (want - b.vx) * (2.2f * dt)
+                    b.vy += (wantY - b.vy) * (2.2f * dt)
+                }
+                if (!b.warned && b.z > -75f) {
+                    b.warned = true
+                    host.sfx(Sfx.LOCK, 0.7f, 0.8f)
+                    host.sfx(Sfx.SAUCER_FIRE, 0.6f, 0.4f)
+                }
+            }
             b.x += b.vx * dt; b.y += b.vy * dt; b.z += b.vz * dt
             if (b.z > -2f) {
                 b.alive = false
-                // In a run scene the bolt must actually arrive near the ship.
-                if (!isRunScene() ||
-                    (abs(b.x - shipX()) < 1.6f && abs(b.y - shipY()) < 1.4f)
-                ) shieldHit()
+                if (!run || (abs(b.x - shipX()) < 1.6f && abs(b.y - shipY()) < 1.4f)) shieldHit()
             }
         }
     }
@@ -868,15 +892,15 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
         spawnCd -= dt
         var aliveW = 0
         for (t in towers) if (t.alive) aliveW++
-        if (spawnCd <= 0f && aliveW < 3 && kills + aliveW < killQuota) {
+        if (spawnCd <= 0f && aliveW < 4 && kills + aliveW < killQuota) {
             spawnTower(1)
-            spawnCd = 2.2f + rng.nextFloat()
+            spawnCd = 1.75f + rng.nextFloat() * 0.8f
         }
         for (t in towers) {
             if (!t.alive || t.kind != 1) continue
             t.hitCd = (t.hitCd - dt).coerceAtLeast(0f)
-            t.phase += dt * 1.6f
-            t.z += (10f + 2f * d) * dt          // walkers advance slowly, relentlessly
+            t.phase += dt * 1.8f
+            t.z += (12.5f + 2.5f * d) * dt      // 25% more relentless
             if ((t.phase % 3.1416f) < 0.05f) host.sfx(Sfx.STOMP, 0.9f + rng.nextFloat() * 0.2f, 0.6f)
             if (t.z > -18f) {                    // reached the line: it costs you
                 t.alive = false
@@ -885,9 +909,15 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
             }
             t.fireCd -= dt
             if (t.fireCd <= 0f && t.z > -200f) {
-                t.fireCd = (2.8f - 0.2f * d).coerceAtLeast(1.4f)
-                fireBoltFrom(t.x, t.h - 4.4f, t.z, 26f + 3f * d)
-                host.sfx(Sfx.SAUCER_FIRE, 0.7f, 0.6f)
+                t.fireCd = (2.24f - 0.16f * d).coerceAtLeast(1.1f)
+                if (rng.nextFloat() < 0.4f) {
+                    // The head launches a homing missile — shoot it down.
+                    fireBoltFrom(t.x, t.h - 4.4f, t.z, (20f + 2f * d) * 1.25f, 2)
+                    host.sfx(Sfx.THRUST, 0.7f, 0.8f)
+                } else {
+                    fireBoltFrom(t.x, t.h - 4.4f, t.z, (26f + 3f * d) * 1.25f)
+                    host.sfx(Sfx.SAUCER_FIRE, 0.7f, 0.6f)
+                }
             }
         }
         updateBolts(dt)
@@ -1016,8 +1046,13 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
             t.fireCd -= dt
             if (t.fireCd <= 0f && t.z > -160f) {
                 t.fireCd = (3f - 0.2f * d).coerceAtLeast(1.6f)
-                fireBoltFrom(t.x, -0.6f, t.z, 30f + 3f * d)
-                host.sfx(Sfx.SAUCER_FIRE, 1.3f, 0.45f)
+                if (rng.nextFloat() < 0.35f) {
+                    fireBoltFrom(t.x, -0.6f, t.z, 22f + 2f * d, 2)
+                    host.sfx(Sfx.THRUST, 0.9f, 0.7f)
+                } else {
+                    fireBoltFrom(t.x, -0.6f, t.z, 30f + 3f * d)
+                    host.sfx(Sfx.SAUCER_FIRE, 1.3f, 0.45f)
+                }
             }
         }
         updateBolts(dt)
@@ -1163,11 +1198,12 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
         }
         for (b in bolts) {
             if (!b.alive) continue
-            if (screenHit(b.x, b.y, b.z, 0.12f)) {
+            val r = if (b.kind == 2) 0.17f else 0.12f
+            if (screenHit(b.x, b.y, b.z, r)) {
                 b.alive = false
-                score += 25
-                explode(b.x, b.y, b.z, 8, 0.04f)
-                host.sfx(Sfx.EXPL_S, 1.5f, 0.6f)
+                score += if (b.kind == 2) 75 else 25
+                explode(b.x, b.y, b.z, if (b.kind == 2) 16 else 8, if (b.kind == 2) 0.08f else 0.04f)
+                host.sfx(if (b.kind == 2) Sfx.EXPL_M else Sfx.EXPL_S, 1.4f, 0.7f)
                 return
             }
         }
