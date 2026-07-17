@@ -156,6 +156,7 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
     var targetingOff = false; private set
     var torpedoT = -1f; private set
     var fleetMega = false; private set    // dagger destroyer looming in FLEET
+    private var saidLordFleet = false
     var victoryKind = 0; private set      // 0 station, 1 destroyer, 2 station mk2
     var briefTitle = ""; private set
     var briefSub = ""; private set
@@ -240,8 +241,8 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
         }
         when (level) {
             Level.YAVIN -> if (part == 1) host.say("mentor_brief") else host.say("pilot_launch")
-            Level.HOTH -> host.say("mentor_hoth")
-            Level.ENDOR -> host.say("mentor_endor")
+            Level.HOTH -> host.say("lord_hoth")
+            Level.ENDOR -> host.say("sage_endor")
         }
     }
 
@@ -348,6 +349,7 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
         spawnCd = 1f
         worldSpeed = 40f
         host.sfx(Sfx.WARP)
+        host.say("lord_walkers")
         host.startRumble(0.7f)
         host.music("hoth_walkers")
     }
@@ -356,6 +358,7 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
         clearField()
         state = GameState.FLEET; stateT = 0f
         fleetMega = mega
+        saidLordFleet = false
         kills = 0
         killQuota = (8 + 2 * d).toInt().coerceAtMost(18)
         spawnCd = 0.4f
@@ -398,7 +401,7 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
         worldSpeed = 60f + 4f * d      // tightest walls, gentlest speed
         barrierCd = 1.8f
         host.sfx(Sfx.ALARM, 1f, 0.7f)
-        host.say("pilot_core")
+        host.say(if (rng.nextBoolean()) "sage_core" else "lord_core")
         host.startRumble(0.9f)
         host.music("endor_core")
         lastAlmost = false
@@ -410,7 +413,7 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
         portZ = -300f
         targetingOff = false
         torpedoT = -1f
-        host.say(if (kind == PORT_EXHAUST) "mentor_letgo" else "mentor_letgo", urgent = true)
+        host.say(if (kind == PORT_CORE) "sage_letgo" else "mentor_letgo", urgent = true)
     }
 
     private fun beginMiniwin() {
@@ -437,6 +440,7 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
         host.stopRumble()
         host.sfx(Sfx.EXPL_L, 0.6f, 1f)
         host.say("pilot_victory", urgent = true)
+        if (victoryKind == 2) host.say("sage_victory")
         host.music("victory")
         sphereBurst(0f, 2f, -120f, 300, 26f)
     }
@@ -465,7 +469,11 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
         host.stopRumble()
         host.music(null)
         host.sfx(Sfx.SHIP_DIE)
-        host.say("mentor_fall")
+        host.say(when (rng.nextInt(3)) {
+            0 -> "lord_fall"
+            1 -> "sage_fall"
+            else -> "mentor_fall"
+        })
         hiScore = maxOf(hiScore, score)
         store.highScore = score
         store.bestWave = part
@@ -508,8 +516,14 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
                 if (!saidScene && stateT > 1f) { saidScene = true; host.say("pilot_droids") }
                 spawnSwooper(1)
             }
-            GameState.FLEET -> updateSwoopers(dt, starsSpeed = 34f) {
-                spawnSwooper(if (rng.nextFloat() < 0.34f) 2 else if (rng.nextBoolean()) 3 else 0)
+            GameState.FLEET -> {
+                if (fleetMega && !saidLordFleet && kills * 2 >= killQuota) {
+                    saidLordFleet = true
+                    host.say("lord_fleet")
+                }
+                updateSwoopers(dt, starsSpeed = 34f) {
+                    spawnSwooper(if (rng.nextFloat() < 0.34f) 2 else if (rng.nextBoolean()) 3 else 0)
+                }
             }
             GameState.SURFACE -> updateSurface(dt)
             GameState.WALKERS -> updateWalkers(dt)

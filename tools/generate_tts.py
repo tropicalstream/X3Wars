@@ -3,9 +3,11 @@
 Pre-generate the X3Wars voice lines with fish.audio S2.1 Pro
 (free developer tier: https://fish.audio/blog/s2-1-pro-free-api/).
 
-Two speakers, chosen by phrase-id prefix:
-  pilot_*   the young pilot     https://fish.audio/app/m/16b68ec193c24e61929c84c1306961a5/
-  mentor_*  the old mystic      https://fish.audio/app/m/77fec8dd00174ddcac427af0b1011709/
+Four speakers, chosen by phrase-id prefix:
+  pilot_*   the young pilot        https://fish.audio/app/m/16b68ec193c24e61929c84c1306961a5/
+  mentor_*  the old mystic         https://fish.audio/app/m/77fec8dd00174ddcac427af0b1011709/
+  sage_*    the little green sage  https://fish.audio/app/m/dd61225f53154701ac8a3122a1cd296d/
+  lord_*    the dark overlord      https://fish.audio/app/m/670f78ba9a2c49feaf5e1eae024d7029/
 
 Usage:
   export FISH_API_KEY=...          # from https://fish.audio developer console
@@ -36,11 +38,19 @@ PHRASES = ROOT / "app/src/main/assets/phrases.json"
 OUT_DIR = ROOT / "app/src/main/assets/tts"
 PILOT_MODEL_ID = "16b68ec193c24e61929c84c1306961a5"   # the young pilot
 MENTOR_MODEL_ID = "77fec8dd00174ddcac427af0b1011709"  # the old mystic
+SAGE_MODEL_ID = "dd61225f53154701ac8a3122a1cd296d"    # the little green sage
+LORD_MODEL_ID = "670f78ba9a2c49feaf5e1eae024d7029"    # the imperial dark overlord
 API_URL = "https://api.fish.audio/v1/tts"
 
 
 def model_for(pid: str) -> str:
-    return MENTOR_MODEL_ID if pid.startswith("mentor_") else PILOT_MODEL_ID
+    if pid.startswith("mentor_"):
+        return MENTOR_MODEL_ID
+    if pid.startswith("sage_"):
+        return SAGE_MODEL_ID
+    if pid.startswith("lord_"):
+        return LORD_MODEL_ID
+    return PILOT_MODEL_ID
 
 
 def main() -> None:

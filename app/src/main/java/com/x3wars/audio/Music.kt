@@ -34,6 +34,50 @@ class Music(private val context: Context) {
             "endor_forest", "endor_space", "endor_core",
             "victory",
         )
+
+        /**
+         * An AI-music prompt per scene, written into each folder as
+         * _prompt.txt — paste into your generator of choice, drop the MP3
+         * back in the same folder.
+         */
+        val PROMPTS = mapOf(
+            "title" to "Epic retro space-opera main theme, heroic brass fanfare over sweeping " +
+                "strings, 1980s arcade grandeur with analog synth undertones, triumphant and " +
+                "adventurous, builds to a bold statement then loops cleanly. Instrumental, 100 BPM.",
+            "yavin_space" to "Driving orchestral space-battle music, urgent staccato strings and " +
+                "punchy brass hits, dogfight energy, snare ostinato, soaring heroic counter-melody, " +
+                "instrumental, loopable, 140 BPM.",
+            "yavin_surface" to "Tense propulsive orchestral-synth hybrid, low brass pulses and " +
+                "arpeggiated analog bass, skimming-over-metal-plains momentum, rising danger " +
+                "figures, instrumental, loopable, 128 BPM.",
+            "yavin_trench" to "Claustrophobic accelerating battle music, relentless percussion, " +
+                "ticking-clock ostinato, brass stabs closing in, thin high strings holding a nerve " +
+                "note, builds toward a fateful single-shot climax but never resolves, instrumental, 132 BPM.",
+            "hoth_droids" to "Cold sparse tension music, icy string harmonics and glassy synth pads, " +
+                "distant timpani, snowfall stillness with creeping mechanical menace underneath, " +
+                "instrumental, loopable, 90 BPM.",
+            "hoth_walkers" to "Ominous mechanical war-march, heavy low brass and pounding slow " +
+                "percussion like giant footfalls, dread and inevitability, dark imperial menace, " +
+                "instrumental, loopable, 84 BPM.",
+            "hoth_fleet" to "Massive orchestral fleet-battle music, dark imperial motif looming " +
+                "beneath heroic swirling strings, huge dynamic swells as a warship approaches, " +
+                "instrumental, loopable, 120 BPM.",
+            "hoth_deck" to "Aggressive strafing-run music, urgent brass rhythms over metallic " +
+                "industrial percussion, alarms and adrenaline, victorious edge breaking through, " +
+                "instrumental, loopable, 138 BPM.",
+            "endor_forest" to "High-velocity chase music through ancient forest, galloping " +
+                "percussion, whirling woodwinds and racing strings, playful but dangerous, " +
+                "branches whipping past, instrumental, loopable, 150 BPM.",
+            "endor_space" to "Grand climactic space-battle music, full orchestra at war, heroic " +
+                "theme fighting through dissonant imperial brass, desperate and hopeful at once, " +
+                "instrumental, loopable, 134 BPM.",
+            "endor_core" to "Claustrophobic reactor-run music, pulsing warning-klaxon synth bass, " +
+                "tight percussive rhythm in narrow metal corridors, rising heat and heartbeat, " +
+                "explosive escape energy at the loop point, instrumental, 126 BPM.",
+            "victory" to "Triumphant celebration fanfare, jubilant brass and bells, medal-ceremony " +
+                "grandeur with warm strings, relieved joy after impossible odds, instrumental, " +
+                "short loop, 108 BPM.",
+        )
         private const val TAG = "X3WarsMusic"
     }
 
@@ -49,10 +93,15 @@ class Music(private val context: Context) {
         thread = HandlerThread("x3wars-music").apply { start() }
         handler = Handler(thread!!.looper)
         handler?.post {
-            // Create the drop-in folders so they're discoverable.
+            // Create the drop-in folders, each with its AI-music prompt.
             runCatching {
                 val root = File(context.getExternalFilesDir(null), "music")
-                for (s in SCENES) File(root, s).mkdirs()
+                for (s in SCENES) {
+                    val dir = File(root, s).apply { mkdirs() }
+                    val prompt = File(dir, "_prompt.txt")
+                    val text = PROMPTS[s] ?: continue
+                    if (!prompt.exists() || prompt.readText() != text) prompt.writeText(text)
+                }
             }.onFailure { Log.w(TAG, "music dirs", it) }
         }
     }
