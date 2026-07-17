@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- Wireframe battle station: globe with latitude/meridian lines -->
+    <path android:strokeColor="#5FFF9A" android:strokeWidth="1.6" android:fillColor="#00000000"
+        android:pathData="M54,30a24,24 0,1 0,0.01 0z"/>
+    <path android:strokeColor="#3FCC78" android:strokeWidth="1" android:fillColor="#00000000"
+        android:pathData="M30.6,49.5c6,-3.4 40.8,-3.4 46.8,0"/>
+    <path android:strokeColor="#3FCC78" android:strokeWidth="1" android:fillColor="#00000000"
+        android:pathData="M31.8,60c7,3.6 37.4,3.6 44.4,0"/>
+    <path android:strokeColor="#3FCC78" android:strokeWidth="1" android:fillColor="#00000000"
+        android:pathData="M54,30c-7,6 -7,42 0,48"/>
+    <path android:strokeColor="#3FCC78" android:strokeWidth="1" android:fillColor="#00000000"
+        android:pathData="M54,30c7,6 7,42 0,48"/>
+    <!-- equator trench -->
+    <path android:strokeColor="#5FFF9A" android:strokeWidth="1.8" android:fillColor="#00000000"
+        android:pathData="M30,54.6L78,54.6"/>
+    <!-- the crater dish -->
+    <path android:strokeColor="#5FFF9A" android:strokeWidth="1.6" android:fillColor="#00000000"
+        android:pathData="M44.5,41.5m-6.2,0a6.2,6.2 0,1 1,12.4 0a6.2,6.2 0,1 1,-12.4 0"/>
+    <path android:strokeColor="#3FCC78" android:strokeWidth="1" android:fillColor="#00000000"
+        android:pathData="M44.5,41.5m-2.6,0a2.6,2.6 0,1 1,5.2 0a2.6,2.6 0,1 1,-5.2 0"/>
+    <!-- targeting reticle over it -->
+    <path android:strokeColor="#FFB040" android:strokeWidth="1.8" android:fillColor="#00000000"
+        android:pathData="M64,64 L72,64 M64,64 L64,72 M92,64 L84,64 M92,64 L92,72 M64,92 L72,92 M64,92 L64,84 M92,92 L84,92 M92,92 L92,84"/>
+    <path android:strokeColor="#FFB040" android:strokeWidth="1.4" android:fillColor="#00000000"
+        android:pathData="M78,71 L78,75 M78,81 L78,85 M71,78 L75,78 M81,78 L85,78"/>
+    <!-- twin torpedo streaks -->
+    <path android:strokeColor="#59D7FF" android:strokeWidth="1.8" android:fillColor="#00000000"
+        android:pathData="M22,88c8,-4 16,-8 24,-14 M18,80c8,-3 15,-7 22,-12"/>
+</vector>

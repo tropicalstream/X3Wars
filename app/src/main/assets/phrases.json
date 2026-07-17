@@ -1,0 +1,48 @@
+{
+  "pilot_launch": [
+    "Squadron, form up. We punch through their screen and make for the trench!",
+    "All wings report in. This is the run that counts!",
+    "Here we go again. Stay sharp — the station remembers us now."
+  ],
+  "pilot_fighters": [
+    "Interceptors inbound — light them up!",
+    "Here they come. Watch the crossfire!"
+  ],
+  "pilot_hit": [
+    "Shields took one — hold together, baby!",
+    "That was too close. Shields are thinning!",
+    "We're hit! Still flying — barely!"
+  ],
+  "pilot_surface": [
+    "Down on the deck. Cannon towers ahead — strafe and keep moving!",
+    "Surface run! Watch the tower fire!"
+  ],
+  "pilot_trench": [
+    "I'm in the trench. Walls are tight — stay with me!",
+    "Into the trench! Thread the barriers, steady hands!"
+  ],
+  "pilot_almost": [
+    "Almost there... almost there...",
+    "Port's coming up. Hold this line..."
+  ],
+  "pilot_away": "Torpedoes away!",
+  "pilot_victory": [
+    "It's a hit! The whole station's going up — we did it!",
+    "Direct hit! Look at that — the sky is ours!"
+  ],
+  "pilot_missed": [
+    "No good — it didn't go in! Coming around!",
+    "Overshot it! Bringing her back for another pass!"
+  ],
+  "mentor_brief": "Your training is over, young one. What remains now cannot be taught — only remembered.",
+  "mentor_letgo": "Let go. The machine cannot see what you feel. Breathe... and trust yourself.",
+  "mentor_again": [
+    "Calm. Center yourself. The port will come to you again.",
+    "Do not chase the moment. Let the moment arrive."
+  ],
+  "mentor_victory": "You see now. The strength was always yours — the machine only borrowed it.",
+  "mentor_fall": [
+    "Every fall is a lesson, young one. Rise, and fly again.",
+    "The end of one flight is the beginning of the next. Rise."
+  ]
+}
