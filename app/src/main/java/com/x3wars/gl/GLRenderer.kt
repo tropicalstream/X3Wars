@@ -121,7 +121,7 @@ class GLRenderer(private val game: Game) : GLSurfaceView.Renderer {
             GameState.FIGHTERS -> { buildStars(1f); buildSwoopers(); buildBolts(); buildBeams(); buildAimReticle() }
             GameState.DROIDS -> {
                 buildStars(0.9f)   // snowfall via game.snowMode
-                buildGround(-6f, 0.6f, 0.85f, 1f, 0.28f)
+                buildSnowfield(-6f)
                 buildSwoopers(); buildBolts(); buildBeams(); buildAimReticle()
             }
             GameState.FLEET -> {
@@ -136,7 +136,7 @@ class GLRenderer(private val game: Game) : GLSurfaceView.Renderer {
             }
             GameState.WALKERS -> {
                 buildStars(0.9f)
-                buildGround(-6f, 0.6f, 0.85f, 1f, 0.24f)
+                buildSnowfield(-6f)
                 buildTowers(); buildBolts(); buildBeams(); buildAimReticle()
             }
             GameState.DECK -> {
@@ -147,7 +147,7 @@ class GLRenderer(private val game: Game) : GLSurfaceView.Renderer {
             GameState.TRENCH -> {
                 buildTunnel(Game.TRENCH_HALF_W, Game.TRENCH_FLOOR, Game.TRENCH_TOP,
                     0.25f, 1f, 0.45f, ceiling = false)
-                buildBarriers(); buildBolts(); buildBeamsCenter()
+                buildBarriers(); buildTowers(); buildBolts(); buildBeamsCenter()
             }
             GameState.BIKES -> {
                 buildForest()
@@ -367,6 +367,79 @@ class GLRenderer(private val game: Game) : GLSurfaceView.Renderer {
         lines.line(-160f, y, -330f, 160f, y, -330f, r, g, b, alpha + 0.2f)
     }
 
+    /**
+     * The Hoth snowfield: a pale ground lattice buried under drifts — dense
+     * white sastrugi dashes with glints, a bright horizon band, and haze
+     * lines that read as wind-blown powder.
+     */
+    private fun buildSnowfield(y: Float) {
+        val scroll = (game.time * game.worldSpeed.coerceAtLeast(40f)) % 8f
+        // faint buried grid
+        var i = 0
+        while (i < 42) {
+            val z = -(i * 8f - scroll)
+            if (z < -1f) lines.line(-44f, y, z, 44f, y, z, 0.75f, 0.88f, 1f, 0.10f)
+            i++
+        }
+        var x = -40f
+        while (x <= 40f) {
+            lines.line(x, y, -330f, x, y, -1f, 0.75f, 0.88f, 1f, 0.07f)
+            x += 8f
+        }
+        // sastrugi: short wind-carved dashes, deterministic per cell so the
+        // field scrolls as solid ground rather than shimmering noise
+        i = 0
+        while (i < 40) {
+            val z = -(i * 8f - scroll)
+            if (z < -2f) {
+                var j = 0
+                while (j < 9) {
+                    val h1 = ((i * 73 + j * 131) % 97) / 97f
+                    val h2 = ((i * 37 + j * 61) % 89) / 89f
+                    val h3 = ((i * 91 + j * 17) % 83) / 83f
+                    val dx = (h1 * 2f - 1f) * 42f
+                    val dz = z + (h2 - 0.5f) * 7f
+                    val len = 0.5f + h3 * 1.3f
+                    val tilt = (h2 - 0.5f) * 0.8f
+                    val a = 0.16f + h3 * 0.22f
+                    lines.line(dx - len, y + 0.02f, dz, dx + len, y + 0.02f + tilt * 0.1f, dz + tilt, 0.9f, 0.96f, 1f, a)
+                    // occasional glint
+                    if (h1 > 0.82f) fx.v(dx, y + 0.05f, dz, 1f, 1f, 1f, 0.35f)
+                    j++
+                }
+            }
+            i++
+        }
+        // bright horizon band + wind haze above it
+        lines.line(-160f, y, -330f, 160f, y, -330f, 0.95f, 0.98f, 1f, 0.8f)
+        lines.line(-160f, y + 0.8f, -328f, 160f, y + 0.8f, -328f, 0.85f, 0.92f, 1f, 0.30f)
+        lines.line(-160f, y + 2f, -326f, 160f, y + 2f, -326f, 0.8f, 0.9f, 1f, 0.14f)
+        // drifting powder streaks near the ground
+        var k = 0
+        while (k < 6) {
+            val z = -30f - k * 45f
+            val off = ((game.time * (14f + k * 3f)) % 90f) - 45f
+            lines.line(off - 6f, y + 0.35f, z, off + 6f, y + 0.4f, z, 0.9f, 0.95f, 1f, 0.10f)
+            k++
+        }
+    }
+
+    /** A manned emplacement on the trench wall: mount, dome, inward barrel. */
+    private fun buildWallTurret(x: Float, yPos: Float, z: Float) {
+        val r = 1f; val g = 0.75f; val b = 0.3f
+        val inward = if (x < 0f) 1f else -1f
+        // mount plate on the wall
+        lines.line(x, yPos - 0.7f, z - 0.7f, x, yPos + 0.7f, z - 0.7f, r, g, b, 0.9f)
+        lines.line(x, yPos - 0.7f, z + 0.7f, x, yPos + 0.7f, z + 0.7f, r, g, b, 0.9f)
+        lines.line(x, yPos - 0.7f, z - 0.7f, x, yPos - 0.7f, z + 0.7f, r, g, b, 0.9f)
+        lines.line(x, yPos + 0.7f, z - 0.7f, x, yPos + 0.7f, z + 0.7f, r, g, b, 0.9f)
+        // dome
+        ring(x + inward * 0.3f, yPos, z, 0.45f, 6, r, g, b, 0.95f)
+        // barrel angled into the trench
+        lines.line(x + inward * 0.3f, yPos, z, x + inward * 1.5f, yPos - 0.15f, z + 0.5f, r, g, b, 0.95f)
+        fx.v(x + inward * 0.3f, yPos, z, 1f, 0.85f, 0.4f, 0.6f)
+    }
+
     private fun buildTowers() {
         for (t in game.towers) {
             if (!t.alive) continue
@@ -375,6 +448,7 @@ class GLRenderer(private val game: Game) : GLSurfaceView.Renderer {
                 2 -> buildRadar(t.x, t.z, t.h)
                 3 -> buildDeckTurret(t.x, t.z, t.h)
                 4 -> buildStrider(t.x, t.z, t.phase)
+                5 -> buildWallTurret(t.x, t.h, t.z)
                 else -> buildCannonTower(t.x, t.z, t.h)
             }
         }
@@ -396,7 +470,7 @@ class GLRenderer(private val game: Game) : GLSurfaceView.Renderer {
 
     /** The four-legged armored walker, striding through the snow. */
     private fun buildWalker(x: Float, z: Float, h: Float, phase: Float) {
-        val r = 0.7f; val g = 0.85f; val b = 1f
+        val r = 0.55f; val g = 0.68f; val b = 0.9f
         val base = -6f
         val hip = base + h * 0.55f
         val bodyH = h * 0.32f

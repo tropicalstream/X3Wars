@@ -69,10 +69,11 @@ class Bolt {
 class Tower {
     var kind = 0
     var x = 0f; var z = -320f
-    var h = 6f
+    var h = 6f          // height; for wall turrets: mount y-position
     var hp = 1
     var phase = 0f      // walker stride
     var fireCd = 1.5f
+    var hitCd = 0f      // brief invulnerability between counted hits
     var alive = false
 }
 
@@ -622,10 +623,14 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
         val n = f ?: return
         n.kind = kind
         n.alive = true; n.leaving = false; n.t = 0f
-        n.baseX = (rng.nextFloat() * 2f - 1f) * 14f
-        n.baseY = (rng.nextFloat() * 2f - 1f) * 8f
-        n.ampX = (if (kind == 1) 2f else 4f) + rng.nextFloat() * (if (kind == 3) 10f else 8f)
-        n.ampY = 2f + rng.nextFloat() * 5f
+        // Spawn OFF-centre: pick a quadrant and keep the weave inside it, so
+        // nothing materializes under a parked reticle.
+        val sx = if (rng.nextBoolean()) 1f else -1f
+        val sy = if (rng.nextBoolean()) 1f else -1f
+        n.baseX = sx * (7f + rng.nextFloat() * 9f)
+        n.baseY = sy * (4f + rng.nextFloat() * 6f)
+        n.ampX = (if (kind == 1) 1.5f else 2.5f) + rng.nextFloat() * (if (kind == 3) 6f else 4f)
+        n.ampY = 1.5f + rng.nextFloat() * 3f
         n.w1 = (if (kind == 2) 0.4f else 0.8f) + rng.nextFloat() * 1.2f
         n.w2 = 0.6f + rng.nextFloat() * 1.4f
         n.ph = rng.nextFloat() * 6.28f
@@ -710,6 +715,7 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
         }
         for (t in towers) {
             if (!t.alive || t.kind != 1) continue
+            t.hitCd = (t.hitCd - dt).coerceAtLeast(0f)
             t.phase += dt * 1.6f
             t.z += (10f + 2f * d) * dt          // walkers advance slowly, relentlessly
             if ((t.phase % 3.1416f) < 0.05f) host.sfx(Sfx.STOMP, 0.9f + rng.nextFloat() * 0.2f, 0.6f)
@@ -744,7 +750,7 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
         n.phase = rng.nextFloat() * 6.28f
         n.fireCd = 1f + rng.nextFloat()
         when (kind) {
-            1 -> { n.h = 8.5f; n.hp = (3 + d).toInt().coerceAtMost(6); n.z = -240f - rng.nextFloat() * 60f }
+            1 -> { n.h = 8.5f; n.hp = 3; n.z = -240f - rng.nextFloat() * 60f }
             2 -> { n.h = 5f; n.hp = 1 }      // radar dish
             3 -> { n.h = 3.6f; n.hp = 2 }    // deck turret
             else -> { n.h = 4.5f + rng.nextFloat() * 4f; n.hp = 1 }
@@ -780,17 +786,50 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
             barrierCd = (2.8f - 0.15f * d).coerceAtLeast(1.7f) + rng.nextFloat() * 0.8f
         }
         stepBarriers(dt)
-        // Rim / duct turret fire.
         spawnCd -= dt
-        if (spawnCd <= 0f) {
-            fireBoltFrom(if (rng.nextBoolean()) -TRENCH_HALF_W else TRENCH_HALF_W,
-                TRENCH_TOP - 0.5f, -240f, 30f + 3f * d)
-            host.sfx(Sfx.SAUCER_FIRE, 1.05f, 0.4f)
-            spawnCd = (2.2f - 0.12f * d).coerceAtLeast(1.1f)
+        if (barrierKind == 0) {
+            // Trench: manned turret emplacements on the walls — visible,
+            // firing, and shootable by flying the boresight onto them.
+            if (spawnCd <= 0f && rangeM > 3000f) {
+                spawnWallTurret()
+                spawnCd = (3.0f - 0.2f * d).coerceAtLeast(1.6f) + rng.nextFloat()
+            }
+            for (t in towers) {
+                if (!t.alive || t.kind != 5) continue
+                t.z += worldSpeed * dt
+                if (t.z > -3f) { t.alive = false; continue }
+                t.fireCd -= dt
+                if (t.fireCd <= 0f && t.z > -170f) {
+                    t.fireCd = (2.4f - 0.15f * d).coerceAtLeast(1.2f)
+                    fireBoltFrom(t.x * 0.94f, t.h, t.z, 30f + 3f * d)
+                    host.sfx(Sfx.SAUCER_FIRE, 1.05f, 0.5f)
+                }
+            }
+        } else {
+            // Core duct: unseen defenses spit from the conduit mouths.
+            if (spawnCd <= 0f) {
+                fireBoltFrom(if (rng.nextBoolean()) -CORE_HALF_W else CORE_HALF_W,
+                    CORE_TOP - 0.5f, -240f, 30f + 3f * d)
+                host.sfx(Sfx.SAUCER_FIRE, 1.05f, 0.4f)
+                spawnCd = (2.2f - 0.12f * d).coerceAtLeast(1.1f)
+            }
         }
         updateBolts(dt)
         if (rangeM < 5200f && !lastAlmost) { lastAlmost = true; host.say("pilot_almost") }
         if (rangeM <= 0f) onArrive()
+    }
+
+    private fun spawnWallTurret() {
+        var t: Tower? = null
+        for (c in towers) if (!c.alive) { t = c; break }
+        val n = t ?: return
+        n.kind = 5
+        n.alive = true
+        n.x = if (rng.nextBoolean()) -TRENCH_HALF_W else TRENCH_HALF_W
+        n.h = TRENCH_FLOOR + 1.2f + rng.nextFloat() * (TRENCH_TOP - TRENCH_FLOOR - 2.4f)
+        n.z = -330f
+        n.hp = 1
+        n.fireCd = 0.8f + rng.nextFloat()
     }
 
     private fun updateBikes(dt: Float) {
@@ -947,18 +986,21 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
             val ty = when (t.kind) {
                 1 -> t.h - 4.4f          // walker head
                 4 -> -0.6f               // strider cab
+                5 -> t.h                 // wall turret mount height
                 else -> t.h - 6f
             }
-            val r = when (t.kind) { 1 -> 0.20f; 2 -> 0.18f; else -> 0.16f }
+            val r = when (t.kind) { 1 -> 0.20f; 2 -> 0.18f; 5 -> 0.20f; else -> 0.16f }
             if (screenHit(t.x, ty, t.z, r)) {
+                if (t.kind == 1 && t.hitCd > 0f) return   // armored head shrugs rapid fire
                 if (--t.hp > 0) {
+                    if (t.kind == 1) t.hitCd = 0.35f
                     host.sfx(Sfx.EXPL_S, 0.7f, 0.6f)
                     explode(t.x, ty, t.z, 6, 0.08f)
                     return
                 }
                 t.alive = false
                 kills++
-                score += when (t.kind) { 1 -> 600; 2 -> 300; 3 -> 250; 4 -> 350; else -> 250 }
+                score += when (t.kind) { 1 -> 600; 2 -> 300; 3 -> 250; 4 -> 350; 5 -> 200; else -> 250 }
                 explode(t.x, ty, t.z, if (t.kind == 1) 34 else 18, 0.08f)
                 host.sfx(if (t.kind == 2) Sfx.DISH else Sfx.EXPL_M, if (t.kind == 1) 0.7f else 0.9f, 0.9f)
                 return
