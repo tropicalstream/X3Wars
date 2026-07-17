@@ -44,5 +44,39 @@
   "mentor_fall": [
     "Every fall is a lesson, young one. Rise, and fly again.",
     "The end of one flight is the beginning of the next. Rise."
-  ]
+  ],
+  "pilot_droids": [
+    "Probe machines on the snow — don't let them report in!",
+    "There — imperial probes. Burn them down before they call home!"
+  ],
+  "pilot_walkers": [
+    "Armored walkers on the ridge! Aim for the head — it's the only soft spot!",
+    "Walkers! Big, slow, and mean. Head shots, everyone!"
+  ],
+  "pilot_fleet": [
+    "That's a destroyer up ahead... and everything it owns between us. Punch through!",
+    "Whole imperial screen incoming. We carve a path to that dagger!"
+  ],
+  "pilot_fleet_next": "The walkers are scrap! Now for their fleet — form on me!",
+  "pilot_space2": [
+    "Their fleet is above the forest moon — clear the sky!",
+    "Fighters everywhere. Keep the lanes open for the ground team!"
+  ],
+  "pilot_deck": [
+    "We're on its hull! Strafe the radars and turrets — strip it bare!",
+    "Deck run! Take out every dish and gun you see!"
+  ],
+  "pilot_deck_close": "She's listing! A few more hits and she goes down!",
+  "pilot_bikes": [
+    "Speeders in the trees — full throttle! Mind the trunks!",
+    "Forest run! These trees come up fast — stay loose!"
+  ],
+  "pilot_generator": "The shield bunker — dead ahead! Make this one count!",
+  "pilot_shield": "The shield is down! The way up is open!",
+  "pilot_core": [
+    "We're inside the superstructure. Tight ducts all the way to the core.",
+    "Into the guts of it. Watch the conduits — almost home."
+  ],
+  "mentor_hoth": "Cold tests the flame, young one. Let yours burn steady.",
+  "mentor_endor": "The forest hides the path, and the path hides the heart. Fly gently, strike surely."
 }

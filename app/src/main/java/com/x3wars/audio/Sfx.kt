@@ -46,8 +46,15 @@ class Sfx(private val context: Context) {
         const val THUMP_HI = 20     // the heartbeat, high note
         const val PWR_SPAWN = 21    // power-up shimmers onto the field
         const val PWR_GET = 22      // power-up collected
-        const val PWR_END = 23      // boon expires
-        private const val COUNT = 24
+        const val PWR_END = 23      // targeting off / dud tap
+        const val STOMP = 24        // walker footfall
+        const val DROID = 25        // probe droid chirp
+        const val DROID_DIE = 26    // probe droid pops
+        const val DISH = 27         // radar dish shatters
+        const val ALARM = 28        // core-run klaxon
+        const val WHOOSH = 29       // trunks whipping past
+        const val LOCK = 30         // targeting computer tick
+        private const val COUNT = 31
         private const val RATE = 22050
     }
 
@@ -109,6 +116,26 @@ class Sfx(private val context: Context) {
                 })
                 ids[PWR_GET] = load(dir, "pget", arpeggio(intArrayOf(659, 880, 1174, 1568), 55, 0.75f))
                 ids[PWR_END] = load(dir, "pend", buf(260) { t -> sine(700f - 380f * t, t) * exp(-t * 8f) * 0.4f })
+                ids[STOMP] = load(dir, "stomp", buf(340) { t ->
+                    (sine(52f, t) * 0.8f + noise() * 0.25f * exp(-t * 40f)) * exp(-t * 9f)
+                })
+                ids[DROID] = load(dir, "droid", buf(260) { t ->
+                    sine(900f + 500f * sin(28f * t * 6.283f), t) * exp(-t * 7f) * 0.35f
+                })
+                ids[DROID_DIE] = load(dir, "droidd", buf(420) { t ->
+                    sine(1200f - 900f * t + 300f * sin(40f * t), t) * exp(-t * 6f) * 0.4f + noise() * 0.2f * exp(-t * 12f)
+                })
+                ids[DISH] = load(dir, "dish", buf(500) { t ->
+                    (noise() * 0.5f + sine(1800f - 1200f * t, t) * 0.3f + sq(240f, t) * 0.2f) * exp(-t * 6f)
+                })
+                ids[ALARM] = load(dir, "alarm", buf(900) { t ->
+                    val f = if ((t * 3f).toInt() % 2 == 0) 700f else 520f
+                    sq(f, t) * 0.28f * (if (t < 0.85f) 1f else exp(-(t - 0.85f) * 20f))
+                })
+                ids[WHOOSH] = load(dir, "whoosh", buf(240) { t ->
+                    noise() * sin(3.1416f * (t / 0.24f)) * 0.5f
+                })
+                ids[LOCK] = load(dir, "lock", buf(60) { t -> sine(1400f, t) * exp(-t * 40f) * 0.4f })
                 loaded = true
             }
         }
@@ -127,12 +154,13 @@ class Sfx(private val context: Context) {
         }
     }
 
-    fun startRumble() {
+    fun startRumble(rate: Float = 1f) {
         handler?.post {
-            if (!loaded || rumbleStream != 0) return@post
+            if (!loaded) return@post
+            if (rumbleStream != 0) { pool.stop(rumbleStream); rumbleStream = 0 }
             val duckMul = if (duckProvider?.invoke() == true) 0.4f else 1f
             val v = (volume * 0.4f * duckMul).coerceIn(0f, 1f)
-            rumbleStream = pool.play(ids[SAUCER_LOOP], v, v, 0, -1, 1f)
+            rumbleStream = pool.play(ids[SAUCER_LOOP], v, v, 0, -1, rate.coerceIn(0.5f, 2f))
         }
     }
 

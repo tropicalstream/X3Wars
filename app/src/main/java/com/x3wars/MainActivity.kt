@@ -11,6 +11,7 @@ import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
+import com.x3wars.audio.Music
 import com.x3wars.audio.Sfx
 import com.x3wars.audio.Voice
 import com.x3wars.engine.Game
@@ -33,6 +34,7 @@ class MainActivity : Activity(), GameHost {
     private lateinit var store: SettingsStore
     private lateinit var sfx: Sfx
     private lateinit var voice: Voice
+    private lateinit var music: Music
     private lateinit var game: Game
     private lateinit var glView: GLSurfaceView
     private lateinit var renderer: GLRenderer
@@ -47,6 +49,7 @@ class MainActivity : Activity(), GameHost {
         store = SettingsStore(this)
         sfx = Sfx(this).also { it.loadAsync() }
         voice = Voice(this).also { it.load() }
+        music = Music(this).also { it.load() }
         sfx.duckProvider = { voice.isSpeaking } // sound effects duck while the crew talks
         game = Game(store, this)
         renderer = GLRenderer(game).also { it.sbs = store.sbs }
@@ -66,9 +69,10 @@ class MainActivity : Activity(), GameHost {
     // ------------------------------------------------------------ GameHost
 
     override fun sfx(id: Int, pitch: Float, vol: Float) = sfx.play(id, pitch, vol)
-    override fun startRumble() = sfx.startRumble()
+    override fun startRumble(rate: Float) = sfx.startRumble(rate)
     override fun stopRumble() = sfx.stopRumble()
     override fun say(id: String, urgent: Boolean) = voice.say(id, urgent)
+    override fun music(scene: String?) = music.play(scene)
 
     // --------------------------------------------------------------- input
 
@@ -108,8 +112,8 @@ class MainActivity : Activity(), GameHost {
                 if (abs(dx) < dead && abs(dy) < dead) {
                     fireTap()
                 } else if (abs(dx) >= abs(dy)) {
-                    // Horizontal dx sign is inverted on this pad: forward = right.
-                    aim(if (dx < 0) 3 else 2)
+                    // Per on-device test: dx > 0 aims right, dx < 0 aims left.
+                    aim(if (dx < 0) 2 else 3)
                 } else {
                     aim(if (dy < 0) 0 else 1)
                 }
@@ -124,10 +128,12 @@ class MainActivity : Activity(), GameHost {
         super.onResume()
         hideSystemBars()
         glView.onResume()
+        music.resume()
     }
 
     override fun onPause() {
         sfx.stopRumble()
+        music.pause()
         glView.onPause()
         super.onPause()
     }
@@ -135,6 +141,7 @@ class MainActivity : Activity(), GameHost {
     override fun onDestroy() {
         sfx.release()
         voice.release()
+        music.release()
         super.onDestroy()
     }
 

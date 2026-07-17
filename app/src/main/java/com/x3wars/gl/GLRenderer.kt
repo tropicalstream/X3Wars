@@ -5,6 +5,7 @@ import android.opengl.GLSurfaceView
 import android.opengl.Matrix
 import com.x3wars.engine.Game
 import com.x3wars.engine.GameState
+import com.x3wars.engine.Level
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
@@ -15,10 +16,12 @@ import kotlin.math.sin
 import kotlin.random.Random
 
 /**
- * First-person vector renderer for X3Wars: additive glowing wireframes on
- * black (transparent on the waveguide), a perspective camera at the origin,
- * and a 640x480 ortho HUD in stroke font — the 1983 color-vector look,
- * reborn per eye on the X3's side-by-side viewports.
+ * First-person vector renderer for the X3Wars campaign: additive glowing
+ * wireframes on black (transparent on the waveguide), a perspective camera at
+ * the origin, and a 640x480 ortho stroke-font HUD — the 1983 color-vector
+ * look, per eye on the X3's side-by-side viewports. Each battle gets its own
+ * palette: YAVIN phosphor green, HOTH ice blue over snowfall, the destroyer
+ * deck in steel, ENDOR's amber trunks, the core run in warning teal.
  */
 class GLRenderer(private val game: Game) : GLSurfaceView.Renderer {
 
@@ -36,7 +39,7 @@ class GLRenderer(private val game: Game) : GLSurfaceView.Renderer {
     private val ortho = FloatArray(16)
     private val rgb = FloatArray(3)
 
-    private val lines = Batch(30000)
+    private val lines = Batch(32000)
     private val fx = Batch(8000)
     private val hud = Batch(9000)
 
@@ -78,16 +81,14 @@ class GLRenderer(private val game: Game) : GLSurfaceView.Renderer {
         GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT)
         GLES30.glUseProgram(program)
 
-        // Camera: at the origin (the cockpit), banking with the stick in the
-        // trench, kicked by hits. In the trench the ship position IS the camera.
-        val inTrench = game.state == GameState.TRENCH || game.state == GameState.PORT
-        val bank = if (inTrench) -game.rx * 10f else -game.rx * 4f
+        val run = isRun()
+        val bank = if (run) -game.rx * 10f else -game.rx * 4f
         val shX = (rnd.nextFloat() - 0.5f) * 0.5f * game.shake
         val shY = (rnd.nextFloat() - 0.5f) * 0.5f * game.shake
         Matrix.setIdentityM(view, 0)
         Matrix.rotateM(view, 0, bank, 0f, 0f, 1f)
-        val camX = (if (inTrench) game.shipX() else 0f) + shX
-        val camY = (if (inTrench) game.shipY() else 0f) + shY
+        val camX = (if (run) game.shipX() else 0f) + shX
+        val camY = (if (run) game.shipY() else 0f) + shY
         Matrix.translateM(view, 0, -camX, -camY, 0f)
 
         Matrix.perspectiveM(proj, 0, 57.6f, aspect, 0.4f, 520f)
@@ -107,6 +108,9 @@ class GLRenderer(private val game: Game) : GLSurfaceView.Renderer {
         }
     }
 
+    private fun isRun() = game.state == GameState.TRENCH || game.state == GameState.BIKES ||
+        game.state == GameState.CORE || game.state == GameState.PORT
+
     // ------------------------------------------------------------- scene
 
     private fun buildScene() {
@@ -114,21 +118,64 @@ class GLRenderer(private val game: Game) : GLSurfaceView.Renderer {
         when (game.state) {
             GameState.TITLE -> { buildStars(0.7f); buildStation(0f, 2f, -190f, 52f, game.time * 4f, 1f) }
             GameState.BRIEFING -> buildStars(1f)
-            GameState.FIGHTERS -> {
+            GameState.FIGHTERS -> { buildStars(1f); buildSwoopers(); buildBolts(); buildBeams(); buildAimReticle() }
+            GameState.DROIDS -> {
+                buildStars(0.9f)   // snowfall via game.snowMode
+                buildGround(-6f, 0.6f, 0.85f, 1f, 0.28f)
+                buildSwoopers(); buildBolts(); buildBeams(); buildAimReticle()
+            }
+            GameState.FLEET -> {
                 buildStars(1f)
-                buildFighters(); buildBolts(); buildBeams(); buildAimReticle()
+                if (game.fleetMega) buildMegaShip()
+                buildSwoopers(); buildBolts(); buildBeams(); buildAimReticle()
             }
             GameState.SURFACE -> {
                 buildStars(0.5f)
-                buildSurface(); buildTowers(); buildBolts(); buildBeams(); buildAimReticle()
+                buildGround(-6f, 0.25f, 1f, 0.45f, 0.30f)
+                buildTowers(); buildBolts(); buildBeams(); buildAimReticle()
+            }
+            GameState.WALKERS -> {
+                buildStars(0.9f)
+                buildGround(-6f, 0.6f, 0.85f, 1f, 0.24f)
+                buildTowers(); buildBolts(); buildBeams(); buildAimReticle()
+            }
+            GameState.DECK -> {
+                buildStars(0.5f)
+                buildGround(-6f, 0.55f, 0.7f, 0.95f, 0.30f)
+                buildTowers(); buildBolts(); buildBeams(); buildAimReticle()
             }
             GameState.TRENCH -> {
-                buildTrench(); buildBarriers(); buildBolts(); buildBeamsCenter()
+                buildTunnel(Game.TRENCH_HALF_W, Game.TRENCH_FLOOR, Game.TRENCH_TOP,
+                    0.25f, 1f, 0.45f, ceiling = false)
+                buildBarriers(); buildBolts(); buildBeamsCenter()
+            }
+            GameState.BIKES -> {
+                buildForest()
+                buildBarriers(); buildTowers(); buildBolts(); buildBeamsCenter()
+            }
+            GameState.CORE -> {
+                buildTunnel(Game.CORE_HALF_W, Game.CORE_FLOOR, Game.CORE_TOP,
+                    0.3f, 0.9f, 0.85f, ceiling = true)
+                buildBarriers(); buildBolts(); buildBeamsCenter()
             }
             GameState.PORT -> {
-                buildTrench(); buildPort(); buildBolts()
+                when (game.portKind) {
+                    Game.PORT_GENERATOR -> { buildForest(); buildGenerator() }
+                    Game.PORT_CORE -> {
+                        buildTunnel(Game.CORE_HALF_W, Game.CORE_FLOOR, Game.CORE_TOP,
+                            0.3f, 0.9f, 0.85f, ceiling = true)
+                        buildCoreHeart()
+                    }
+                    else -> {
+                        buildTunnel(Game.TRENCH_HALF_W, Game.TRENCH_FLOOR, Game.TRENCH_TOP,
+                            0.25f, 1f, 0.45f, ceiling = false)
+                        buildExhaustPort()
+                    }
+                }
+                buildBolts()
                 if (game.torpedoT >= 0f) buildTorpedoes()
             }
+            GameState.MINIWIN -> buildForest()
             GameState.VICTORY -> buildVictory()
             GameState.GAMEOVER -> buildStars(0.25f)
         }
@@ -144,30 +191,74 @@ class GLRenderer(private val game: Game) : GLSurfaceView.Renderer {
         }
     }
 
-    // The classic twin-panel interceptor: two flat hexagonal wings joined by
-    // struts to a small round pod. Drawn nose-on, weaving.
-    private fun buildFighters(): Unit {
+    // ------------------------------------------------------ enemy swoopers
+
+    private fun buildSwoopers() {
         for (f in game.fighters) {
             if (!f.alive) continue
-            val s = 2.2f
-            val x = f.x; val y = f.y; val z = f.z
-            val r = 0.55f; val g = 0.75f; val b = 1f
-            val a = 0.95f
-            for (side in intArrayOf(-1, 1)) {
-                val px = x + side * s
-                // Hex panel in the YZ-ish plane (seen nearly edge-on = a tall slab).
-                hexPanel(px, y, z, s * 1.15f, s * 0.42f, r, g, b, a)
-                // strut to the pod
-                lines.line(px, y, z, x + side * 0.42f * s, y, z, r, g, b, a * 0.8f)
+            when (f.kind) {
+                1 -> buildDroid(f.x, f.y, f.z, f.t)
+                2 -> buildGunship(f.x, f.y, f.z)
+                3 -> buildHunter(f.x, f.y, f.z, f.t)
+                else -> buildInterceptor(f.x, f.y, f.z)
             }
-            // Round pod: an octagon facing the player.
-            ring(x, y, z, 0.5f * s, 8, r, g, b, a)
-            fx.v(x, y, z, 1f, 1f, 1f, 0.5f)
         }
     }
 
+    private fun buildInterceptor(x: Float, y: Float, z: Float) {
+        val s = 2.2f
+        val r = 0.55f; val g = 0.75f; val b = 1f
+        for (side in intArrayOf(-1, 1)) {
+            val px = x + side * s
+            hexPanel(px, y, z, s * 1.15f, s * 0.42f, r, g, b, 0.95f)
+            lines.line(px, y, z, x + side * 0.42f * s, y, z, r, g, b, 0.75f)
+        }
+        ring(x, y, z, 0.5f * s, 8, r, g, b, 0.95f)
+        fx.v(x, y, z, 1f, 1f, 1f, 0.5f)
+    }
+
+    /** Probe droid: hovering pod, sensor ring, dangling feeler legs. */
+    private fun buildDroid(x: Float, y: Float, z: Float, t: Float) {
+        val bob = sin(t * 3f) * 0.3f
+        val yy = y + bob
+        val r = 0.7f; val g = 0.85f; val b = 1f
+        ring(x, yy, z, 1.1f, 8, r, g, b, 0.95f)
+        ring(x, yy + 0.5f, z, 0.55f, 6, r, g, b, 0.8f)
+        lines.line(x, yy + 0.5f, z, x, yy + 1.5f, z, r, g, b, 0.9f)     // antenna
+        fx.v(x, yy + 1.5f, z, 1f, 0.4f, 0.3f, 0.7f + 0.3f * sin(t * 8f)) // blinker
+        var i = 0
+        while (i < 4) {
+            val an = i / 4f * 6.2832f + 0.6f
+            val lx = x + cos(an) * 0.8f
+            lines.line(lx, yy - 0.4f, z, lx + cos(an) * 0.25f, yy - 1.5f - sin(t * 4f + i) * 0.15f, z, r, g, b, 0.7f)
+            i++
+        }
+    }
+
+    /** Gunship: a wide slab with engine pods — soaks three hits. */
+    private fun buildGunship(x: Float, y: Float, z: Float) {
+        val r = 0.85f; val g = 0.6f; val b = 1f
+        val w = 3.6f; val h = 1.1f
+        lines.line(x - w, y - h, z, x + w, y - h, z, r, g, b, 0.95f)
+        lines.line(x - w, y + h, z, x + w, y + h, z, r, g, b, 0.95f)
+        lines.line(x - w, y - h, z, x - w * 0.8f, y + h, z, r, g, b, 0.95f)
+        lines.line(x + w, y - h, z, x + w * 0.8f, y + h, z, r, g, b, 0.95f)
+        ring(x - w * 0.65f, y, z, 0.55f, 6, r, g, b, 0.85f)
+        ring(x + w * 0.65f, y, z, 0.55f, 6, r, g, b, 0.85f)
+        ring(x, y, z, 0.8f, 4, 1f, 0.8f, 0.4f, 0.9f)                    // bridge diamond
+    }
+
+    /** Hunter: a lean dart, all speed. */
+    private fun buildHunter(x: Float, y: Float, z: Float, t: Float) {
+        val r = 1f; val g = 0.55f; val b = 0.75f
+        val s = 1.5f
+        lines.line(x, y + s * 0.5f, z, x - s, y - s * 0.5f, z, r, g, b, 0.95f)
+        lines.line(x, y + s * 0.5f, z, x + s, y - s * 0.5f, z, r, g, b, 0.95f)
+        lines.line(x - s, y - s * 0.5f, z, x + s, y - s * 0.5f, z, r, g, b, 0.95f)
+        fx.v(x, y - s * 0.2f, z + 0.4f, 1f, 0.7f, 0.4f, 0.6f + 0.4f * sin(t * 20f))
+    }
+
     private fun hexPanel(x: Float, y: Float, z: Float, h: Float, w: Float, r: Float, g: Float, b: Float, a: Float) {
-        // Vertical hexagon: top point, two upper corners, two lower, bottom point.
         val ys = floatArrayOf(h, h * 0.5f, -h * 0.5f, -h, -h * 0.5f, h * 0.5f)
         val zs = floatArrayOf(0f, w, w, 0f, -w, -w)
         for (i in 0 until 6) {
@@ -187,18 +278,37 @@ class GLRenderer(private val game: Game) : GLSurfaceView.Renderer {
         }
     }
 
+    /** The dagger destroyer looming behind the FLEET act, growing with progress. */
+    private fun buildMegaShip() {
+        val prog = (game.kills.toFloat() / game.killQuota.coerceAtLeast(1)).coerceIn(0f, 1f)
+        val z = -300f + prog * 90f
+        val w = 60f; val l = 90f
+        val y = 18f
+        val r = 0.65f; val g = 0.75f; val b = 0.95f; val a = 0.5f + prog * 0.3f
+        // wedge: nose ahead, widening astern
+        lines.line(0f, y, z, -w, y + 8f, z - l, r, g, b, a)
+        lines.line(0f, y, z, w, y + 8f, z - l, r, g, b, a)
+        lines.line(-w, y + 8f, z - l, w, y + 8f, z - l, r, g, b, a * 0.8f)
+        lines.line(0f, y, z, 0f, y + 14f, z - l * 0.75f, r, g, b, a * 0.7f)
+        lines.line(0f, y + 14f, z - l * 0.75f, -w * 0.7f, y + 8f, z - l, r, g, b, a * 0.6f)
+        lines.line(0f, y + 14f, z - l * 0.75f, w * 0.7f, y + 8f, z - l, r, g, b, a * 0.6f)
+        // bridge tower
+        lines.line(0f, y + 14f, z - l * 0.72f, 0f, y + 19f, z - l * 0.72f, r, g, b, a)
+        lines.line(-4f, y + 19f, z - l * 0.72f, 4f, y + 19f, z - l * 0.72f, r, g, b, a)
+        fx.v(-4f, y + 19f, z - l * 0.72f, 1f, 1f, 1f, a)
+        fx.v(4f, y + 19f, z - l * 0.72f, 1f, 1f, 1f, a)
+    }
+
     private fun buildBolts() {
         for (b in game.bolts) {
             if (!b.alive) continue
             fx.v(b.x, b.y, b.z, 1f, 0.5f, 0.2f, 1f)
-            // a short hot trail
             lines.line(b.x, b.y, b.z, b.x - b.vx * 0.06f, b.y - b.vy * 0.06f, b.z - b.vz * 0.06f,
                 1f, 0.35f, 0.12f, 0.8f)
             ring(b.x, b.y, b.z, 0.34f, 6, 1f, 0.4f, 0.15f, 0.9f)
         }
     }
 
-    /** Twin cannon beams converging on the aim point (fighters/surface acts). */
     private fun buildBeams() {
         val t = game.beamT
         if (t >= 0.35f) return
@@ -212,7 +322,6 @@ class GLRenderer(private val game: Game) : GLSurfaceView.Renderer {
         fx.v(ax, ay, -d, 0.7f, 1f, 0.8f, a)
     }
 
-    /** In the trench the guns fire dead ahead from the ship (the camera). */
     private fun buildBeamsCenter() {
         val t = game.beamT
         if (t >= 0.35f) return
@@ -224,7 +333,6 @@ class GLRenderer(private val game: Game) : GLSurfaceView.Renderer {
         fx.v(sx, sy, -34f, 0.7f, 1f, 0.8f, a)
     }
 
-    /** World-space reticle brackets at the aim point — always exactly aligned. */
     private fun buildAimReticle() {
         val d = 30f
         val x = game.rx * Game.TANX * d
@@ -241,73 +349,182 @@ class GLRenderer(private val game: Game) : GLSurfaceView.Renderer {
         lines.line(x + s, y + s, -d, x + s, y + gpx, -d, r, g, b, a)
     }
 
-    // ------------------------------------------------------- station surface
+    // ------------------------------------------------------ ground scenes
 
-    private fun buildSurface() {
-        val r = 0.25f; val g = 1f; val b = 0.45f
-        val y = -6f
-        val scroll = (game.time * (90f)) % 8f
-        // cross lines racing toward the camera
+    private fun buildGround(y: Float, r: Float, g: Float, b: Float, alpha: Float) {
+        val scroll = (game.time * game.worldSpeed.coerceAtLeast(40f)) % 8f
         var i = 0
         while (i < 42) {
             val z = -(i * 8f - scroll)
-            if (z < -1f) lines.line(-44f, y, z, 44f, y, z, r, g, b, 0.30f)
+            if (z < -1f) lines.line(-44f, y, z, 44f, y, z, r, g, b, alpha)
             i++
         }
-        // longitudinal rails
         var x = -40f
         while (x <= 40f) {
-            lines.line(x, y, -330f, x, y, -1f, r, g, b, 0.22f)
+            lines.line(x, y, -330f, x, y, -1f, r, g, b, alpha * 0.7f)
             x += 8f
         }
-        // horizon
-        lines.line(-160f, y, -330f, 160f, y, -330f, r, g, b, 0.5f)
+        lines.line(-160f, y, -330f, 160f, y, -330f, r, g, b, alpha + 0.2f)
     }
 
     private fun buildTowers() {
-        val r = 0.3f; val g = 1f; val b = 0.5f
         for (t in game.towers) {
             if (!t.alive) continue
-            val base = -6f
-            val top = base + t.h
-            val w = 1.1f
-            for (s in intArrayOf(-1, 1)) {
-                lines.line(t.x + s * w, base, t.z, t.x + s * w * 0.7f, top, t.z, r, g, b, 0.9f)
-                lines.line(t.x + s * w * 0.7f, top, t.z, t.x + s * w * 0.7f, top + 0.7f, t.z, 1f, 0.8f, 0.3f, 0.95f)
+            when (t.kind) {
+                1 -> buildWalker(t.x, t.z, t.h, t.phase)
+                2 -> buildRadar(t.x, t.z, t.h)
+                3 -> buildDeckTurret(t.x, t.z, t.h)
+                4 -> buildStrider(t.x, t.z, t.phase)
+                else -> buildCannonTower(t.x, t.z, t.h)
             }
-            lines.line(t.x - w, base, t.z, t.x + w, base, t.z, r, g, b, 0.8f)
-            lines.line(t.x - w * 0.7f, top, t.z, t.x + w * 0.7f, top, t.z, r, g, b, 0.9f)
-            // the turret head
-            ring(t.x, top + 0.7f, t.z, 0.55f, 6, 1f, 0.8f, 0.3f, 0.95f)
         }
     }
 
-    // ------------------------------------------------------------- trench
+    private fun buildCannonTower(x: Float, z: Float, h: Float) {
+        val r = 0.3f; val g = 1f; val b = 0.5f
+        val base = -6f
+        val top = base + h
+        val w = 1.1f
+        for (s in intArrayOf(-1, 1)) {
+            lines.line(x + s * w, base, z, x + s * w * 0.7f, top, z, r, g, b, 0.9f)
+            lines.line(x + s * w * 0.7f, top, z, x + s * w * 0.7f, top + 0.7f, z, 1f, 0.8f, 0.3f, 0.95f)
+        }
+        lines.line(x - w, base, z, x + w, base, z, r, g, b, 0.8f)
+        lines.line(x - w * 0.7f, top, z, x + w * 0.7f, top, z, r, g, b, 0.9f)
+        ring(x, top + 0.7f, z, 0.55f, 6, 1f, 0.8f, 0.3f, 0.95f)
+    }
 
-    private fun buildTrench() {
-        val r = 0.25f; val g = 1f; val b = 0.45f
-        val hw = Game.TRENCH_HALF_W
-        val fl = Game.TRENCH_FLOOR
-        val top = Game.TRENCH_TOP
+    /** The four-legged armored walker, striding through the snow. */
+    private fun buildWalker(x: Float, z: Float, h: Float, phase: Float) {
+        val r = 0.7f; val g = 0.85f; val b = 1f
+        val base = -6f
+        val hip = base + h * 0.55f
+        val bodyH = h * 0.32f
+        val bw = 2.6f
+        // body box
+        lines.line(x - bw, hip, z, x + bw, hip, z, r, g, b, 0.95f)
+        lines.line(x - bw, hip + bodyH, z, x + bw, hip + bodyH, z, r, g, b, 0.95f)
+        lines.line(x - bw, hip, z, x - bw, hip + bodyH, z, r, g, b, 0.95f)
+        lines.line(x + bw, hip, z, x + bw, hip + bodyH, z, r, g, b, 0.95f)
+        // neck + head (the target)
+        val hy = base + h - 1.2f
+        lines.line(x + bw, hip + bodyH * 0.7f, z, x + bw + 1.3f, hy, z, r, g, b, 0.9f)
+        lines.line(x + bw + 1.3f, hy - 0.55f, z, x + bw + 2.6f, hy - 0.55f, z, 1f, 0.8f, 0.3f, 0.95f)
+        lines.line(x + bw + 1.3f, hy + 0.55f, z, x + bw + 2.6f, hy + 0.55f, z, 1f, 0.8f, 0.3f, 0.95f)
+        lines.line(x + bw + 1.3f, hy - 0.55f, z, x + bw + 1.3f, hy + 0.55f, z, 1f, 0.8f, 0.3f, 0.95f)
+        lines.line(x + bw + 2.6f, hy - 0.55f, z, x + bw + 2.6f, hy + 0.55f, z, 1f, 0.8f, 0.3f, 0.95f)
+        // four striding legs
+        var i = 0
+        while (i < 4) {
+            val lx = x - bw + (i.toFloat() / 3f) * bw * 2f
+            val swing = sin(phase + i * 1.5708f) * 0.7f
+            val kx = lx + swing
+            val ky = (base + hip) / 2f
+            lines.line(lx, hip, z, kx, ky, z, r, g, b, 0.9f)
+            lines.line(kx, ky, z, kx + swing * 0.4f, base, z, r, g, b, 0.9f)
+            i++
+        }
+    }
+
+    private fun buildRadar(x: Float, z: Float, h: Float) {
+        val r = 0.55f; val g = 0.7f; val b = 0.95f
+        val base = -6f
+        val top = base + h
+        lines.line(x, base, z, x, top, z, r, g, b, 0.9f)
+        // the dish: two nested rings + feed spike, the sweep glint
+        ring(x, top + 0.9f, z, 1.15f, 10, r, g, b, 0.95f)
+        ring(x, top + 0.9f, z, 0.55f, 8, r, g, b, 0.8f)
+        lines.line(x, top + 0.9f, z, x + cos(game.time * 3f) * 1.15f, top + 0.9f + sin(game.time * 3f) * 1.15f, z, 1f, 0.9f, 0.4f, 0.8f)
+    }
+
+    private fun buildDeckTurret(x: Float, z: Float, h: Float) {
+        val r = 0.55f; val g = 0.7f; val b = 0.95f
+        val base = -6f
+        val top = base + h
+        val w = 0.9f
+        lines.line(x - w, base, z, x - w, top, z, r, g, b, 0.9f)
+        lines.line(x + w, base, z, x + w, top, z, r, g, b, 0.9f)
+        lines.line(x - w, top, z, x + w, top, z, r, g, b, 0.9f)
+        // twin barrels
+        lines.line(x - 0.35f, top, z, x - 0.35f, top + 1.3f, z, 1f, 0.8f, 0.3f, 0.95f)
+        lines.line(x + 0.35f, top, z, x + 0.35f, top + 1.3f, z, 1f, 0.8f, 0.3f, 0.95f)
+    }
+
+    /** The two-legged forest strider, head at cab height. */
+    private fun buildStrider(x: Float, z: Float, phase: Float) {
+        val r = 0.8f; val g = 0.75f; val b = 0.5f
+        val base = -3.4f
+        val hip = base + 1.9f
+        val cab = -0.6f
+        // legs
+        for (s in intArrayOf(-1, 1)) {
+            val swing = sin(phase + if (s > 0) 0f else 3.1416f) * 0.4f
+            lines.line(x + s * 0.5f, hip, z, x + s * 0.9f + swing, base, z, r, g, b, 0.9f)
+        }
+        lines.line(x - 0.5f, hip, z, x + 0.5f, hip, z, r, g, b, 0.9f)
+        // cab box
+        lines.line(x - 0.8f, hip, z, x - 0.8f, cab + 0.6f, z, r, g, b, 0.95f)
+        lines.line(x + 0.8f, hip, z, x + 0.8f, cab + 0.6f, z, r, g, b, 0.95f)
+        lines.line(x - 0.8f, cab + 0.6f, z, x + 0.8f, cab + 0.6f, z, r, g, b, 0.95f)
+        lines.line(x - 0.5f, cab - 0.2f, z, x + 0.5f, cab - 0.2f, z, 1f, 0.8f, 0.3f, 0.9f)
+    }
+
+    // -------------------------------------------------------- run scenes
+
+    private fun buildTunnel(hw: Float, fl: Float, top: Float, r: Float, g: Float, b: Float, ceiling: Boolean) {
         val scroll = (game.time * game.worldSpeed) % 8f
-        // long rails: floor edges, wall tops
         for (x in floatArrayOf(-hw, hw)) {
             lines.line(x, fl, -330f, x, fl, -1f, r, g, b, 0.55f)
             lines.line(x, top, -330f, x, top, -1f, r, g, b, 0.55f)
             lines.line(x, (fl + top) / 2f, -330f, x, (fl + top) / 2f, -1f, r, g, b, 0.2f)
         }
         lines.line(0f, fl, -330f, 0f, fl, -1f, r, g, b, 0.18f)
-        // ribs racing past
+        if (ceiling) lines.line(0f, top, -330f, 0f, top, -1f, r, g, b, 0.18f)
         var i = 0
         while (i < 42) {
             val z = -(i * 8f - scroll)
             if (z < -1.5f) {
                 val a = 0.4f
-                lines.line(-hw, fl, z, hw, fl, z, r, g, b, a)          // floor tie
-                lines.line(-hw, fl, z, -hw, top, z, r, g, b, a)        // left rib
-                lines.line(hw, fl, z, hw, top, z, r, g, b, a)          // right rib
-                lines.line(-hw, top, z, -hw - 2.2f, top, z, r, g, b, a * 0.7f)  // rim flares
-                lines.line(hw, top, z, hw + 2.2f, top, z, r, g, b, a * 0.7f)
+                lines.line(-hw, fl, z, hw, fl, z, r, g, b, a)
+                lines.line(-hw, fl, z, -hw, top, z, r, g, b, a)
+                lines.line(hw, fl, z, hw, top, z, r, g, b, a)
+                if (ceiling) lines.line(-hw, top, z, hw, top, z, r, g, b, a)
+                else {
+                    lines.line(-hw, top, z, -hw - 2.2f, top, z, r, g, b, a * 0.7f)
+                    lines.line(hw, top, z, hw + 2.2f, top, z, r, g, b, a * 0.7f)
+                }
+            }
+            i++
+        }
+    }
+
+    /** The forest floor and passing canopy for the speeder run. */
+    private fun buildForest() {
+        val fl = Game.TRENCH_FLOOR
+        val scroll = (game.time * game.worldSpeed) % 8f
+        val gr = 0.35f; val gg = 0.9f; val gb = 0.4f
+        // ground
+        var i = 0
+        while (i < 42) {
+            val z = -(i * 8f - scroll)
+            if (z < -1f) lines.line(-30f, fl, z, 30f, fl, z, gr, gg, gb, 0.22f)
+            i++
+        }
+        lines.line(-160f, fl, -330f, 160f, fl, -330f, gr, gg, gb, 0.4f)
+        // flanking treeline: trunks at pseudo-random offsets, canopy strokes
+        val tr = 0.8f; val tg = 0.6f; val tb = 0.3f
+        i = 0
+        while (i < 26) {
+            val z = -(i * 13f - (game.time * game.worldSpeed) % 13f)
+            if (z < -2f) {
+                val h1 = 6f + ((i * 37) % 5)
+                val off = ((i * 53) % 7) * 0.6f
+                for (s in intArrayOf(-1, 1)) {
+                    val x = s * (8f + off)
+                    lines.line(x, fl, z, x, fl + h1, z, tr, tg, tb, 0.6f)
+                    lines.line(x - 1.2f, fl + h1, z, x + 1.2f, fl + h1 * 0.82f, z, gr, gg, gb, 0.5f)
+                    lines.line(x + 1.2f, fl + h1, z, x - 1.2f, fl + h1 * 0.82f, z, gr, gg, gb, 0.5f)
+                }
             }
             i++
         }
@@ -316,41 +533,93 @@ class GLRenderer(private val game: Game) : GLSurfaceView.Renderer {
     private fun buildBarriers() {
         for (bar in game.barriers) {
             if (!bar.alive || bar.z > -1.5f) continue
-            val hw = Game.TRENCH_HALF_W
-            val fl = Game.TRENCH_FLOOR
-            val top = Game.TRENCH_TOP
-            val z = bar.z
-            val gxl = bar.gapX - bar.gapW / 2f
-            val gr = bar.gapX + bar.gapW / 2f
-            val gb = bar.gapY - bar.gapH / 2f
-            val gt = bar.gapY + bar.gapH / 2f
-            val r = 1f; val g = 0.75f; val b = 0.25f; val a = 0.85f
-            // Lattice everywhere except the gap: verticals
-            var x = -hw
-            while (x <= hw + 0.01f) {
-                if (x < gxl || x > gr) lines.line(x, fl, z, x, top, z, r, g, b, a * 0.55f)
-                else {
-                    lines.line(x, fl, z, x, gb, z, r, g, b, a * 0.55f)
-                    lines.line(x, gt, z, x, top, z, r, g, b, a * 0.55f)
-                }
-                x += 1.15f
+            when (bar.kind) {
+                1 -> buildTreeGate(bar)
+                2 -> buildPipeGate(bar)
+                else -> buildLatticeGate(bar)
             }
-            // frame + gap outline
-            lines.line(-hw, fl, z, hw, fl, z, r, g, b, a)
-            lines.line(-hw, top, z, hw, top, z, r, g, b, a)
-            lines.line(gxl, gb, z, gr, gb, z, 0.4f, 1f, 0.6f, a)
-            lines.line(gxl, gt, z, gr, gt, z, 0.4f, 1f, 0.6f, a)
-            lines.line(gxl, gb, z, gxl, gt, z, 0.4f, 1f, 0.6f, a)
-            lines.line(gr, gb, z, gr, gt, z, 0.4f, 1f, 0.6f, a)
         }
     }
 
-    private fun buildPort() {
+    private fun buildLatticeGate(bar: com.x3wars.engine.Barrier) {
+        val hw = Game.TRENCH_HALF_W
+        val fl = Game.TRENCH_FLOOR
+        val top = Game.TRENCH_TOP
+        val z = bar.z
+        val gxl = bar.gapX - bar.gapW / 2f
+        val gr = bar.gapX + bar.gapW / 2f
+        val gb = bar.gapY - bar.gapH / 2f
+        val gt = bar.gapY + bar.gapH / 2f
+        val r = 1f; val g = 0.75f; val b = 0.25f; val a = 0.85f
+        var x = -hw
+        while (x <= hw + 0.01f) {
+            if (x < gxl || x > gr) lines.line(x, fl, z, x, top, z, r, g, b, a * 0.55f)
+            else {
+                lines.line(x, fl, z, x, gb, z, r, g, b, a * 0.55f)
+                lines.line(x, gt, z, x, top, z, r, g, b, a * 0.55f)
+            }
+            x += 1.15f
+        }
+        lines.line(-hw, fl, z, hw, fl, z, r, g, b, a)
+        lines.line(-hw, top, z, hw, top, z, r, g, b, a)
+        lines.line(gxl, gb, z, gr, gb, z, 0.4f, 1f, 0.6f, a)
+        lines.line(gxl, gt, z, gr, gt, z, 0.4f, 1f, 0.6f, a)
+        lines.line(gxl, gb, z, gxl, gt, z, 0.4f, 1f, 0.6f, a)
+        lines.line(gr, gb, z, gr, gt, z, 0.4f, 1f, 0.6f, a)
+    }
+
+    /** Two great trunks with the safe gap between them. */
+    private fun buildTreeGate(bar: com.x3wars.engine.Barrier) {
+        val fl = Game.TRENCH_FLOOR
+        val z = bar.z
+        val gxl = bar.gapX - bar.gapW / 2f
+        val gr = bar.gapX + bar.gapW / 2f
+        val tr = 0.85f; val tg = 0.62f; val tb = 0.3f
+        for (x in floatArrayOf(gxl - 0.4f, gr + 0.4f)) {
+            lines.line(x, fl, z, x, fl + 9f, z, tr, tg, tb, 0.95f)
+            lines.line(x - 0.35f, fl, z, x - 0.35f, fl + 9f, z, tr, tg, tb, 0.5f)
+            lines.line(x + 0.35f, fl, z, x + 0.35f, fl + 9f, z, tr, tg, tb, 0.5f)
+            // canopy
+            lines.line(x - 1.6f, fl + 9f, z, x + 1.6f, fl + 9f, z, 0.35f, 0.9f, 0.4f, 0.6f)
+        }
+        // gap marker on the ground
+        lines.line(gxl, fl + 0.05f, z, gr, fl + 0.05f, z, 0.4f, 1f, 0.6f, 0.8f)
+    }
+
+    /** A conduit ring blocking the duct except for its gap. */
+    private fun buildPipeGate(bar: com.x3wars.engine.Barrier) {
+        val hw = Game.CORE_HALF_W
+        val fl = Game.CORE_FLOOR
+        val top = Game.CORE_TOP
+        val z = bar.z
+        val gxl = bar.gapX - bar.gapW / 2f
+        val gr = bar.gapX + bar.gapW / 2f
+        val gb = bar.gapY - bar.gapH / 2f
+        val gt = bar.gapY + bar.gapH / 2f
+        val r = 0.95f; val g = 0.45f; val b = 0.35f; val a = 0.9f
+        // horizontal conduits above and below the gap
+        var y = fl
+        while (y <= top + 0.01f) {
+            if (y < gb || y > gt) lines.line(-hw, y, z, hw, y, z, r, g, b, a * 0.5f)
+            else {
+                lines.line(-hw, y, z, gxl, y, z, r, g, b, a * 0.5f)
+                lines.line(gr, y, z, hw, y, z, r, g, b, a * 0.5f)
+            }
+            y += 0.9f
+        }
+        lines.line(gxl, gb, z, gr, gb, z, 0.3f, 0.9f, 0.85f, a)
+        lines.line(gxl, gt, z, gr, gt, z, 0.3f, 0.9f, 0.85f, a)
+        lines.line(gxl, gb, z, gxl, gt, z, 0.3f, 0.9f, 0.85f, a)
+        lines.line(gr, gb, z, gr, gt, z, 0.3f, 0.9f, 0.85f, a)
+    }
+
+    // ------------------------------------------------------------- ports
+
+    private fun buildExhaustPort() {
         val z = game.portZ
         if (z > -2f) return
         val fl = Game.TRENCH_FLOOR
         val pulse = 0.6f + 0.4f * sin(game.time * 9f)
-        // The exhaust port: a glowing square pit in the floor with a core.
         val s = 1.6f
         lines.line(-s, fl + 0.02f, z - s, s, fl + 0.02f, z - s, 0.5f, 0.9f, 1f, pulse)
         lines.line(-s, fl + 0.02f, z + s, s, fl + 0.02f, z + s, 0.5f, 0.9f, 1f, pulse)
@@ -358,6 +627,43 @@ class GLRenderer(private val game: Game) : GLSurfaceView.Renderer {
         lines.line(s, fl + 0.02f, z - s, s, fl + 0.02f, z + s, 0.5f, 0.9f, 1f, pulse)
         ringFlat(0f, fl + 0.03f, z, 0.9f, 8, 0.6f, 0.95f, 1f, pulse)
         fx.v(0f, fl + 0.05f, z, 0.7f, 1f, 1f, pulse)
+    }
+
+    /** The shield generator: a bunker crowned with a great dish. */
+    private fun buildGenerator() {
+        val z = game.portZ
+        if (z > -2f) return
+        val fl = Game.TRENCH_FLOOR
+        val pulse = 0.6f + 0.4f * sin(game.time * 6f)
+        val r = 0.55f; val g = 0.9f; val b = 1f
+        // bunker slab
+        lines.line(-4f, fl, z, 4f, fl, z, r, g, b, 0.9f)
+        lines.line(-4f, fl, z, -3f, fl + 2.2f, z, r, g, b, 0.9f)
+        lines.line(4f, fl, z, 3f, fl + 2.2f, z, r, g, b, 0.9f)
+        lines.line(-3f, fl + 2.2f, z, 3f, fl + 2.2f, z, r, g, b, 0.9f)
+        // the dish
+        ring(0f, fl + 4.4f, z, 2.4f, 12, r, g, b, pulse)
+        ring(0f, fl + 4.4f, z, 1.1f, 8, r, g, b, pulse * 0.8f)
+        lines.line(0f, fl + 2.2f, z, 0f, fl + 4.4f, z, r, g, b, 0.9f)
+        fx.v(0f, fl + 4.4f, z, 0.8f, 1f, 1f, pulse)
+    }
+
+    /** The reactor heart at the end of the core run. */
+    private fun buildCoreHeart() {
+        val z = game.portZ
+        if (z > -2f) return
+        val pulse = 0.5f + 0.5f * sin(game.time * 7f)
+        val r = 1f; val g = 0.5f; val b = 0.35f
+        ring(0f, 0f, z, 2.2f, 8, r, g, b, 0.9f)
+        ring(0f, 0f, z, 1.4f, 6, 0.3f, 0.9f, 0.85f, pulse)
+        // crackling spokes
+        var i = 0
+        while (i < 4) {
+            val an = i / 4f * 6.2832f + game.time * 2f
+            lines.line(0f, 0f, z, cos(an) * 2.2f, sin(an) * 2.2f, z, r, g, b, pulse * 0.8f)
+            i++
+        }
+        fx.v(0f, 0f, z, 1f, 0.8f, 0.6f, pulse)
     }
 
     private fun ringFlat(x: Float, y: Float, z: Float, rad: Float, segs: Int, r: Float, g: Float, b: Float, a: Float) {
@@ -377,18 +683,22 @@ class GLRenderer(private val game: Game) : GLSurfaceView.Renderer {
         val fl = Game.TRENCH_FLOOR
         val z0 = -4f
         val z1 = game.portZ
+        // The generator and core sit at mid-height; the exhaust port in the floor.
+        val targetY = when (game.portKind) {
+            Game.PORT_GENERATOR -> fl + 4.4f
+            Game.PORT_CORE -> 0f
+            else -> fl
+        }
         for (side in intArrayOf(-1, 1)) {
             val x0 = sx + side * 1.4f
             val y0 = sy - 1f
-            // Quadratic arc: out, then dive into the port.
             val x = x0 + (0f - x0) * t
-            val y = y0 + (fl - y0) * (t * t)
+            val y = y0 + (targetY - y0) * (t * t)
             val z = z0 + (z1 - z0) * t
             fx.v(x, y, z, 0.5f, 0.95f, 1f, 1f)
             ring(x, y, z, 0.3f, 6, 0.5f, 0.95f, 1f, 0.9f)
-            // trail
             val tx = x0 + (0f - x0) * (t * 0.82f)
-            val ty = y0 + (fl - y0) * (t * 0.82f) * (t * 0.82f)
+            val ty = y0 + (targetY - y0) * (t * 0.82f) * (t * 0.82f)
             val tz = z0 + (z1 - z0) * (t * 0.82f)
             lines.line(x, y, z, tx, ty, tz, 0.4f, 0.85f, 1f, 0.7f)
         }
@@ -400,15 +710,24 @@ class GLRenderer(private val game: Game) : GLSurfaceView.Renderer {
         buildStars(0.6f)
         val t = game.stateT
         val cx = 0f; val cy = 2f; val cz = -120f
-        if (t < 2.2f) {
-            // The station tears itself apart: wireframe sphere, expanding and
-            // shuddering, brightening to white.
-            val expand = 1f + t * 0.55f
-            val jit = t * 0.9f
-            val white = (t / 2.2f).coerceIn(0f, 1f)
-            buildStation(cx, cy, cz, 40f * expand, game.time * 9f, 1f - white * 0.4f, jit)
+        when (game.victoryKind) {
+            1 -> {   // the destroyer breaks amidships
+                if (t < 2.2f) {
+                    val jit = t * 1.2f
+                    val a = 1f - (t / 2.2f) * 0.4f
+                    buildWreckWedge(cx, cy, cz, jit, a)
+                }
+            }
+            else -> {
+                if (t < 2.2f) {
+                    val expand = 1f + t * 0.55f
+                    val jit = t * 0.9f
+                    val white = (t / 2.2f).coerceIn(0f, 1f)
+                    buildStation(cx, cy, cz, 40f * expand, game.time * 9f, 1f - white * 0.4f, jit,
+                        unfinished = game.victoryKind == 2)
+                }
+            }
         }
-        // Shockwave ring in the station plane.
         if (t > 0.35f) {
             val rw = (t - 0.35f) * 95f
             val a = (1f - (t - 0.35f) / 4.2f).coerceIn(0f, 1f)
@@ -417,11 +736,20 @@ class GLRenderer(private val game: Game) : GLSurfaceView.Renderer {
         }
     }
 
-    /** The battle station: a wireframe moon with its signature crater dish. */
-    private fun buildStation(cx: Float, cy: Float, cz: Float, rad: Float, spin: Float, alpha: Float, jitter: Float = 0f) {
+    private fun buildWreckWedge(cx: Float, cy: Float, cz: Float, jit: Float, a: Float) {
+        val w = 46f; val l = 70f
+        val r = 0.65f; val g = 0.75f; val b = 0.95f
+        fun j() = (rnd.nextFloat() - 0.5f) * jit * 6f
+        lines.line(cx + j(), cy + j(), cz, cx - w + j(), cy + 7f + j(), cz - l, r, g, b, a)
+        lines.line(cx + j(), cy + j(), cz, cx + w + j(), cy + 7f + j(), cz - l, r, g, b, a)
+        lines.line(cx - w + j(), cy + 7f + j(), cz - l, cx + w + j(), cy + 7f + j(), cz - l, r, g, b, a * 0.8f)
+        lines.line(cx + j(), cy + j(), cz, cx + j(), cy + 12f + j(), cz - l * 0.75f, r, g, b, a * 0.7f)
+    }
+
+    private fun buildStation(cx: Float, cy: Float, cz: Float, rad: Float, spin: Float, alpha: Float,
+                             jitter: Float = 0f, unfinished: Boolean = false) {
         val r = 0.45f; val g = 0.95f; val b = 0.6f
         val segs = 20
-        // latitude rings
         var lat = -2
         while (lat <= 2) {
             val phi = lat * 0.5f
@@ -429,17 +757,18 @@ class GLRenderer(private val game: Game) : GLSurfaceView.Renderer {
             val rr = rad * cos(phi)
             var px = 0f; var pz = 0f; var first = true
             for (k in 0..segs) {
+                // The half-built station: a bite missing from one flank.
+                if (unfinished && lat >= 0 && k > segs * 0.62f && k < segs * 0.88f) { first = true; continue }
                 val an = k.toFloat() / segs * 6.2832f + spin * 0.008f
                 val jx = if (jitter > 0f) (rnd.nextFloat() - 0.5f) * jitter else 0f
                 val jy = if (jitter > 0f) (rnd.nextFloat() - 0.5f) * jitter else 0f
                 val nx = cx + cos(an) * rr + jx
-                val nz = cz + sin(an) * rr * 0.35f + jy   // squashed = drawn like a globe
+                val nz = cz + sin(an) * rr * 0.35f + jy
                 if (!first) lines.line(px, y, pz, nx, y, nz, r, g, b, alpha * 0.6f)
                 px = nx; pz = nz; first = false
             }
             lat++
         }
-        // meridians (front-facing arcs)
         var m = 0
         while (m < 7) {
             val am = m.toFloat() / 6f * 3.1416f - 1.5708f + spin * 0.004f
@@ -454,10 +783,18 @@ class GLRenderer(private val game: Game) : GLSurfaceView.Renderer {
             }
             m++
         }
-        // the crater dish, upper hemisphere
+        if (unfinished) {
+            // exposed skeletal ribs on the missing flank
+            var i = 0
+            while (i < 4) {
+                val an = (0.65f + i * 0.07f) * 6.2832f
+                lines.line(cx + cos(an) * rad * 0.5f, cy + rad * 0.15f, cz,
+                    cx + cos(an) * rad, cy + rad * (0.3f + i * 0.1f), cz, r, g, b, alpha * 0.5f)
+                i++
+            }
+        }
         ring(cx - rad * 0.42f, cy + rad * 0.38f, cz - 1f, rad * 0.2f, 12, r, g, b, alpha)
         ring(cx - rad * 0.42f, cy + rad * 0.38f, cz - 1f, rad * 0.09f, 8, r, g, b, alpha * 0.8f)
-        // equator trench line
         lines.line(cx - rad, cy, cz, cx + rad, cy, cz, r, g, b, alpha * 0.9f)
     }
 
@@ -491,11 +828,10 @@ class GLRenderer(private val game: Game) : GLSurfaceView.Renderer {
         hud.reset()
         val g = game
 
-        // Shield-hit red wash / port-strike white flash as frame borders.
         if (g.hitFlash > 0.01f) frame(6f, 1f, 0.2f, 0.15f, g.hitFlash * 0.9f)
         if (g.whiteFlash > 0.01f) {
             var i = 0
-            while (i < 16) { // cheap full-screen white: dense horizontal lines
+            while (i < 16) {
                 val y = 15f + i * 30f
                 hud.line(0f, y, 0f, 640f, y, 0f, 1f, 1f, 1f, g.whiteFlash * 0.8f)
                 i++
@@ -505,9 +841,9 @@ class GLRenderer(private val game: Game) : GLSurfaceView.Renderer {
         when (g.state) {
             GameState.TITLE -> {
                 textC("X3WARS", 320f, 150f, 6f, 0.45f, 1f, 0.6f)
-                textC("THE BATTLE FOR THE MOON THAT ISNT", 320f, 195f, 1.4f, 0.6f, 0.85f, 1f)
+                textC("YAVIN - HOTH - ENDOR", 320f, 195f, 1.6f, 0.6f, 0.85f, 1f)
                 textC("SWIPE TO AIM - CANNONS FIRE THEMSELVES", 320f, 300f, 1.3f, 0.75f, 0.8f, 0.9f)
-                textC("TAP AT THE PORT TO LOOSE THE TORPEDOES", 320f, 322f, 1.3f, 0.75f, 0.8f, 0.9f)
+                textC("TAP AT THE HEART OF EACH BATTLE", 320f, 322f, 1.3f, 0.75f, 0.8f, 0.9f)
                 val blink = 0.5f + 0.5f * sin(g.time * 5f)
                 textC("TAP TO LAUNCH", 320f, 400f, 2.2f, 0.45f, 1f, 0.6f, blink)
                 textC("HIGH " + g.hiScore, 320f, 435f, 1.3f, 1f, 0.85f, 0.4f)
@@ -517,31 +853,54 @@ class GLRenderer(private val game: Game) : GLSurfaceView.Renderer {
                 textC(g.briefSub, 320f, 250f, 1.7f, 1f, 0.85f, 0.4f)
                 hudCommon()
             }
-            GameState.FIGHTERS -> {
-                if (g.stateT < 2.2f) textC("INTERCEPTORS", 320f, 150f, 2.4f, 1f, 0.6f, 0.4f, 1f - g.stateT / 2.4f)
-                text("KILLS " + g.kills + "/" + g.killQuota, 16f, 452f, 1.4f, 0.6f, 0.85f, 1f)
-                hudCommon()
+            GameState.FIGHTERS -> { sceneHeader("INTERCEPTORS"); killsLine(); hudCommon() }
+            GameState.DROIDS -> { sceneHeader("HUNT THE PROBES"); killsLine(); hudCommon() }
+            GameState.WALKERS -> { sceneHeader("THE WALKERS"); killsLine(); hudCommon() }
+            GameState.FLEET -> {
+                sceneHeader(if (g.fleetMega) "THE FLEET" else "THE FLEET ABOVE")
+                killsLine(); hudCommon()
             }
+            GameState.DECK -> { sceneHeader("THE DESTROYER RUN"); killsLine(); hudCommon() }
             GameState.SURFACE -> {
-                if (g.stateT < 2.2f) textC("THE SURFACE", 320f, 150f, 2.4f, 0.45f, 1f, 0.6f, 1f - g.stateT / 2.4f)
+                sceneHeader("THE SURFACE")
                 text("SWEEP " + g.surfaceT.toInt(), 16f, 452f, 1.4f, 0.6f, 0.85f, 1f)
                 hudCommon()
             }
             GameState.TRENCH -> {
-                if (g.stateT < 2.2f) textC("THE TRENCH", 320f, 150f, 2.4f, 0.45f, 1f, 0.6f, 1f - g.stateT / 2.4f)
-                textC("RANGE " + g.rangeM.toInt().coerceAtLeast(0), 320f, 452f, 1.7f, 1f, 0.85f, 0.4f)
-                centerCross()
-                hudCommon()
+                sceneHeader("THE TRENCH")
+                rangeLine()
+                centerCross(); hudCommon()
+            }
+            GameState.BIKES -> {
+                sceneHeader("THE FOREST RUN")
+                rangeLine()
+                centerCross(); hudCommon()
+            }
+            GameState.CORE -> {
+                sceneHeader("INTO THE CORE")
+                rangeLine()
+                centerCross(); hudCommon()
             }
             GameState.PORT -> {
                 centerCross()
                 buildTargeting()
                 hudCommon()
             }
+            GameState.MINIWIN -> {
+                textC("THE SHIELD IS DOWN", 320f, 210f, 2.6f, 1f, 0.9f, 0.5f)
+                textC("+10000", 320f, 248f, 1.7f, 0.45f, 1f, 0.6f)
+                hudCommon()
+            }
             GameState.VICTORY -> {
                 if (g.stateT > 1.2f) {
-                    textC("THE BATTLE STATION", 320f, 190f, 2.6f, 1f, 0.9f, 0.5f)
-                    textC("IS DESTROYED", 320f, 225f, 2.6f, 1f, 0.9f, 0.5f)
+                    val line1 = when (g.victoryKind) {
+                        1 -> "THE DESTROYER"
+                        2 -> "THE NEW STATION"
+                        else -> "THE BATTLE STATION"
+                    }
+                    val line2 = when (g.victoryKind) { 1 -> "IS DOWN"; else -> "IS DESTROYED" }
+                    textC(line1, 320f, 190f, 2.6f, 1f, 0.9f, 0.5f)
+                    textC(line2, 320f, 225f, 2.6f, 1f, 0.9f, 0.5f)
                     textC("+25000", 320f, 265f, 1.7f, 0.45f, 1f, 0.6f)
                 }
                 hudCommon()
@@ -558,11 +917,21 @@ class GLRenderer(private val game: Game) : GLSurfaceView.Renderer {
         }
     }
 
+    private fun sceneHeader(s: String) {
+        if (game.stateT < 2.2f) textC(s, 320f, 150f, 2.4f, 0.45f, 1f, 0.6f, 1f - game.stateT / 2.4f)
+    }
+
+    private fun killsLine() =
+        text("KILLS " + game.kills + "/" + game.killQuota, 16f, 452f, 1.4f, 0.6f, 0.85f, 1f)
+
+    private fun rangeLine() =
+        textC("RANGE " + game.rangeM.toInt().coerceAtLeast(0), 320f, 452f, 1.7f, 1f, 0.85f, 0.4f)
+
     private fun hudCommon() {
         val g = game
         text("SCORE " + g.score, 16f, 28f, 1.4f, 0.6f, 0.85f, 1f)
-        text("WAVE " + g.wave, 560f, 28f, 1.4f, 0.6f, 0.85f, 1f)
-        // Shields: bracket pips lower-left.
+        val partLabel = if (g.part == 1) levelTag() else "P" + g.part + " " + levelTag()
+        text(partLabel, 640f - 16f - StrokeFont.width(partLabel, 1.4f), 28f, 1.4f, 0.6f, 0.85f, 1f)
         var i = 0
         while (i < g.shields) {
             val x = 16f + i * 16f
@@ -570,6 +939,12 @@ class GLRenderer(private val game: Game) : GLSurfaceView.Renderer {
             hud.line(x, 465f, 0f, x, 475f, 0f, 0.45f, 1f, 0.6f, 0.95f)
             i++
         }
+    }
+
+    private fun levelTag() = when (game.level) {
+        Level.YAVIN -> "YAVIN"
+        Level.HOTH -> "HOTH"
+        Level.ENDOR -> "ENDOR"
     }
 
     private fun centerCross() {
@@ -580,11 +955,10 @@ class GLRenderer(private val game: Game) : GLSurfaceView.Renderer {
         hud.line(320f, 246f, 0f, 320f, 256f, 0f, r, g2, b, 0.9f)
     }
 
-    /** The targeting computer: converging brackets — until it's let go. */
     private fun buildTargeting() {
         val g = game
         if (!g.targetingOff) {
-            val close = ((-g.portZ - 18f) / 280f).coerceIn(0f, 1f)   // 0 = on top of it
+            val close = ((-g.portZ - 18f) / 280f).coerceIn(0f, 1f)
             val s = 40f + close * 150f
             val r = 1f; val gg = 0.75f; val b = 0.25f
             bracket(320f - s, 240f - s * 0.7f, 14f, 1f, r, gg, b)
@@ -593,7 +967,6 @@ class GLRenderer(private val game: Game) : GLSurfaceView.Renderer {
             bracket(320f + s, 240f + s * 0.7f, 14f, -1f, r, gg, b, true)
             textC("TARGETING " + (-g.portZ).toInt().coerceAtLeast(0), 320f, 420f, 1.4f, r, gg, b)
         } else {
-            // Off. A last flicker, then only the voice and the feeling.
             val flick = sin(g.time * 37f) * sin(g.time * 11f)
             if (g.stateT < 3.6f && flick > 0.4f) {
                 textC("TARGETING OFF", 320f, 420f, 1.4f, 1f, 0.4f, 0.25f, 0.5f)

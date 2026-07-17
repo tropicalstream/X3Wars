@@ -6,22 +6,44 @@ wireframes on black (transparent on the waveguide), a young pilot, an old
 mystic in your ear, and one impossible torpedo shot at the heart of a
 moon-sized battle station.
 
-## The run
+## The campaign
 
-Every wave is the full assault, in three acts:
+Three battles, cycling forever with a rising PART number and difficulty
+(PART 2 YAVIN, PART 3 YAVIN, …):
 
-1. **INTERCEPTORS** — open space. Twin-panel fighters swoop and hurl energy
-   bolts. The bolts are the real threat — and they can be shot down.
-2. **THE SURFACE** — down on the deck of the station, cannon towers rising
-   and firing as the surface races past.
-3. **THE TRENCH** — walls tight, catwalk barriers to thread, rim turrets
-   firing, range counting down… and at zero, the **exhaust port**: the
-   targeting computer converges, then switches itself off, the old mystic
-   tells you to trust yourself, and one well-timed TAP sends both torpedoes
-   home. The station's death is the best wireframe fireball we could build.
+**YAVIN** — interceptors in open space (their bolts are shootable), the
+station surface with its cannon towers, then the trench: barriers to thread,
+range counting down, the targeting computer switching itself off, and one
+well-timed TAP to send the torpedoes into the exhaust port.
 
-Miss the window and you loop around for another pass. Waves escalate:
-more fighters, faster bolts, meaner barriers, a longer trench.
+**HOTH** — hunt probe droids over the snowfall, hold the line against
+head-shot-only armored walkers, carve through a mixed imperial screen
+(gunships, hunters, interceptors) as a dagger destroyer looms closer, then
+strafe its deck — radars and turrets — until it goes down.
+
+**ENDOR** — a flat-out speeder run through the forest, threading trunks and
+dodging two-legged striders, torpedo the shield generator, clear the fleet
+above, then a claustrophobic duct run through the unfinished station to its
+core.
+
+Miss a torpedo window and you loop around for another pass. Every full cycle
+raises the PART number: more enemies, tougher walkers, tighter gaps.
+
+## Your soundtrack (drop-in MP3 folders)
+
+On first launch the game creates one folder per scene under
+`Android/data/com.x3wars/files/music/` on the glasses:
+
+`title · yavin_space · yavin_surface · yavin_trench · hoth_droids ·
+hoth_walkers · hoth_fleet · hoth_deck · endor_forest · endor_space ·
+endor_core · victory`
+
+Drop `.mp3` (or `.ogg`/`.m4a`) files in any of them — that scene loops a
+random pick. Empty folder = no music, game plays on. Push from a computer:
+
+```bash
+adb push mytrack.mp3 /sdcard/Android/data/com.x3wars/files/music/yavin_trench/
+```
 
 ## Controls (two inputs, no settings)
 
