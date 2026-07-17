@@ -222,20 +222,48 @@ class GLRenderer(private val game: Game) : GLSurfaceView.Renderer {
         fx.v(x, y, z, 1f, 1f, 1f, 0.5f)
     }
 
-    /** Probe droid: hovering pod, sensor ring, dangling feeler legs. */
+    /** Probe droid: domed sensor head, segmented pod, five jointed feelers. */
     private fun buildDroid(x: Float, y: Float, z: Float, t: Float) {
         val bob = sin(t * 3f) * 0.3f
         val yy = y + bob
         val r = 0.7f; val g = 0.85f; val b = 1f
-        ring(x, yy, z, 1.1f, 8, r, g, b, 0.95f)
-        ring(x, yy + 0.5f, z, 0.55f, 6, r, g, b, 0.8f)
-        lines.line(x, yy + 0.5f, z, x, yy + 1.5f, z, r, g, b, 0.9f)     // antenna
-        fx.v(x, yy + 1.5f, z, 1f, 0.4f, 0.3f, 0.7f + 0.3f * sin(t * 8f)) // blinker
+        // segmented body pod: three stacked rings, drawn as a real hull
+        ring(x, yy + 0.25f, z, 0.85f, 8, r, g, b, 0.95f)
+        ring(x, yy, z, 1.05f, 8, r, g, b, 0.9f)
+        ring(x, yy - 0.3f, z, 0.8f, 8, r, g, b, 0.85f)
+        // vertical hull seams tie the rings together
+        var k = 0
+        while (k < 4) {
+            val an = k / 4f * 6.2832f + 0.4f
+            val cxs = cos(an); val sxs = sin(an)
+            lines.line(x + cxs * 0.85f, yy + 0.25f, z, x + cxs * 1.05f, yy, z, r, g, b, 0.6f)
+            lines.line(x + cxs * 1.05f, yy, z, x + cxs * 0.8f, yy - 0.3f, z, r, g, b, 0.6f)
+            k++
+        }
+        // domed head with a rim and eye cluster
+        ring(x, yy + 0.55f, z, 0.55f, 8, r, g, b, 0.95f)
+        lines.line(x - 0.4f, yy + 0.55f, z, x - 0.15f, yy + 0.85f, z, r, g, b, 0.8f)
+        lines.line(x - 0.15f, yy + 0.85f, z, x + 0.15f, yy + 0.85f, z, r, g, b, 0.8f)
+        lines.line(x + 0.15f, yy + 0.85f, z, x + 0.4f, yy + 0.55f, z, r, g, b, 0.8f)
+        fx.v(x - 0.22f, yy + 0.62f, z, 1f, 0.35f, 0.3f, 0.9f)                       // main eye
+        fx.v(x + 0.1f, yy + 0.66f, z, 0.9f, 0.9f, 1f, 0.6f)                          // sensor eyes
+        fx.v(x + 0.3f, yy + 0.58f, z, 0.9f, 0.9f, 1f, 0.5f)
+        // antenna cluster
+        lines.line(x - 0.1f, yy + 0.85f, z, x - 0.2f, yy + 1.5f, z, r, g, b, 0.85f)
+        lines.line(x + 0.18f, yy + 0.85f, z, x + 0.3f, yy + 1.25f, z, r, g, b, 0.7f)
+        fx.v(x - 0.2f, yy + 1.5f, z, 1f, 0.4f, 0.3f, 0.7f + 0.3f * sin(t * 8f))      // blinker
+        // five jointed manipulator arms with claw tips
         var i = 0
-        while (i < 4) {
-            val an = i / 4f * 6.2832f + 0.6f
-            val lx = x + cos(an) * 0.8f
-            lines.line(lx, yy - 0.4f, z, lx + cos(an) * 0.25f, yy - 1.5f - sin(t * 4f + i) * 0.15f, z, r, g, b, 0.7f)
+        while (i < 5) {
+            val an = i / 5f * 6.2832f + 0.3f
+            val ax = x + cos(an) * 0.7f
+            val sway = sin(t * 4f + i * 1.3f) * 0.12f
+            val ex = ax + cos(an) * 0.18f + sway
+            val ey = yy - 0.95f
+            lines.line(ax, yy - 0.35f, z, ex, ey, z, r, g, b, 0.8f)                  // upper seg
+            lines.line(ex, ey, z, ex + sway, ey - 0.6f, z, r, g, b, 0.65f)           // lower seg
+            fx.v(ex, ey, z, r, g, b, 0.5f)                                            // joint
+            lines.line(ex + sway, ey - 0.6f, z, ex + sway - 0.08f, ey - 0.75f, z, r, g, b, 0.55f)
             i++
         }
     }
@@ -646,34 +674,54 @@ class GLRenderer(private val game: Game) : GLSurfaceView.Renderer {
         ring(x, top + 0.7f, z, 0.55f, 6, 1f, 0.8f, 0.3f, 0.95f)
     }
 
-    /** The four-legged armored walker, striding through the snow. */
+    /** The four-legged armored walker: panelled hull, jointed legs, gunned head. */
     private fun buildWalker(x: Float, z: Float, h: Float, phase: Float) {
         val r = 0.55f; val g = 0.68f; val b = 0.9f
         val base = -6f
         val hip = base + h * 0.55f
         val bodyH = h * 0.32f
         val bw = 2.6f
-        // body box
+        // hull box with armour panel seams
         lines.line(x - bw, hip, z, x + bw, hip, z, r, g, b, 0.95f)
         lines.line(x - bw, hip + bodyH, z, x + bw, hip + bodyH, z, r, g, b, 0.95f)
         lines.line(x - bw, hip, z, x - bw, hip + bodyH, z, r, g, b, 0.95f)
         lines.line(x + bw, hip, z, x + bw, hip + bodyH, z, r, g, b, 0.95f)
-        // neck + head (the target)
-        val hy = base + h - 1.2f
-        lines.line(x + bw, hip + bodyH * 0.7f, z, x + bw + 1.3f, hy, z, r, g, b, 0.9f)
-        lines.line(x + bw + 1.3f, hy - 0.55f, z, x + bw + 2.6f, hy - 0.55f, z, 1f, 0.8f, 0.3f, 0.95f)
-        lines.line(x + bw + 1.3f, hy + 0.55f, z, x + bw + 2.6f, hy + 0.55f, z, 1f, 0.8f, 0.3f, 0.95f)
-        lines.line(x + bw + 1.3f, hy - 0.55f, z, x + bw + 1.3f, hy + 0.55f, z, 1f, 0.8f, 0.3f, 0.95f)
-        lines.line(x + bw + 2.6f, hy - 0.55f, z, x + bw + 2.6f, hy + 0.55f, z, 1f, 0.8f, 0.3f, 0.95f)
-        // four striding legs
         var i = 0
+        while (i < 3) {
+            val px = x - bw + (i + 1) * bw * 0.5f
+            lines.line(px, hip, z, px, hip + bodyH, z, r, g, b, 0.35f)          // panel seams
+            i++
+        }
+        lines.line(x - bw, hip + bodyH * 0.55f, z, x + bw, hip + bodyH * 0.55f, z, r, g, b, 0.3f)
+        // under-belly plate
+        lines.line(x - bw * 0.8f, hip - 0.25f, z, x + bw * 0.8f, hip - 0.25f, z, r, g, b, 0.5f)
+        // angled neck (twin rails) up to the head
+        val hy = base + h - 1.2f
+        lines.line(x + bw, hip + bodyH * 0.8f, z, x + bw + 1.3f, hy + 0.2f, z, r, g, b, 0.85f)
+        lines.line(x + bw, hip + bodyH * 0.45f, z, x + bw + 1.3f, hy - 0.25f, z, r, g, b, 0.85f)
+        // armoured head: box with viewport slit and twin chin guns
+        val hx = x + bw + 1.3f
+        lines.line(hx, hy - 0.55f, z, hx + 1.3f, hy - 0.55f, z, 1f, 0.8f, 0.3f, 0.95f)
+        lines.line(hx, hy + 0.55f, z, hx + 1.3f, hy + 0.55f, z, 1f, 0.8f, 0.3f, 0.95f)
+        lines.line(hx, hy - 0.55f, z, hx, hy + 0.55f, z, 1f, 0.8f, 0.3f, 0.95f)
+        lines.line(hx + 1.3f, hy - 0.55f, z, hx + 1.3f, hy + 0.55f, z, 1f, 0.8f, 0.3f, 0.95f)
+        lines.line(hx + 0.25f, hy + 0.18f, z, hx + 1.05f, hy + 0.18f, z, 1f, 0.9f, 0.5f, 0.7f)  // viewport
+        lines.line(hx + 0.3f, hy - 0.55f, z, hx + 0.5f, hy - 0.95f, z, 1f, 0.8f, 0.3f, 0.9f)     // chin guns
+        lines.line(hx + 0.8f, hy - 0.55f, z, hx + 1.0f, hy - 0.95f, z, 1f, 0.8f, 0.3f, 0.9f)
+        // four legs with knee and ankle joints and foot pads
+        i = 0
         while (i < 4) {
             val lx = x - bw + (i.toFloat() / 3f) * bw * 2f
             val swing = sin(phase + i * 1.5708f) * 0.7f
-            val kx = lx + swing
-            val ky = (base + hip) / 2f
-            lines.line(lx, hip, z, kx, ky, z, r, g, b, 0.9f)
-            lines.line(kx, ky, z, kx + swing * 0.4f, base, z, r, g, b, 0.9f)
+            val kx = lx + swing * 0.6f
+            val ky = hip - (hip - base) * 0.45f
+            val ax2 = lx + swing
+            val ay = base + 0.5f
+            lines.line(lx, hip, z, kx, ky, z, r, g, b, 0.9f)                    // thigh
+            lines.line(kx, ky, z, ax2, ay, z, r, g, b, 0.9f)                    // shin
+            lines.line(ax2, ay, z, ax2, base, z, r, g, b, 0.85f)                // ankle
+            lines.line(ax2 - 0.35f, base, z, ax2 + 0.35f, base, z, r, g, b, 0.9f)  // foot pad
+            fx.v(kx, ky, z, r, g, b, 0.45f)                                     // knee joint
             i++
         }
     }
@@ -702,26 +750,44 @@ class GLRenderer(private val game: Game) : GLSurfaceView.Renderer {
         lines.line(x + 0.35f, top, z, x + 0.35f, top + 1.3f, z, 1f, 0.8f, 0.3f, 0.95f)
     }
 
-    /** The two-legged forest strider, head at cab height. */
+    /** The two-legged forest strider: angular cab, cheek pods, reverse knees. */
     private fun buildStrider(x: Float, z: Float, phase: Float) {
         val r = 0.8f; val g = 0.75f; val b = 0.5f
         val base = -3.4f
         val hip = base + 1.9f
         val cab = -0.6f
-        // legs
-        for (s in intArrayOf(-1, 1)) {
-            val swing = sin(phase + if (s > 0) 0f else 3.1416f) * 0.4f
-            lines.line(x + s * 0.5f, hip, z, x + s * 0.9f + swing, base, z, r, g, b, 0.9f)
+        // reverse-knee legs: hip back to knee, knee forward down to ankle, foot
+        for (sd in intArrayOf(-1, 1)) {
+            val swing = sin(phase + if (sd > 0) 0f else 3.1416f) * 0.3f
+            val kx = x + sd * 0.85f - 0.3f + swing
+            val ky = (base + hip) * 0.5f + 0.15f
+            val ax2 = x + sd * 0.7f + swing * 0.5f
+            lines.line(x + sd * 0.45f, hip, z, kx, ky, z, r, g, b, 0.9f)        // thigh (back)
+            lines.line(kx, ky, z, ax2, base + 0.35f, z, r, g, b, 0.9f)          // shin (forward)
+            lines.line(ax2 - 0.4f, base, z, ax2 + 0.4f, base, z, r, g, b, 0.9f) // wide foot
+            lines.line(ax2, base + 0.35f, z, ax2, base, z, r, g, b, 0.8f)
+            fx.v(kx, ky, z, r, g, b, 0.45f)                                     // knee joint
         }
-        lines.line(x - 0.5f, hip, z, x + 0.5f, hip, z, r, g, b, 0.9f)
-        // cab box
-        lines.line(x - 0.8f, hip, z, x - 0.8f, cab + 0.6f, z, r, g, b, 0.95f)
-        lines.line(x + 0.8f, hip, z, x + 0.8f, cab + 0.6f, z, r, g, b, 0.95f)
-        lines.line(x - 0.8f, cab + 0.6f, z, x + 0.8f, cab + 0.6f, z, r, g, b, 0.95f)
-        lines.line(x - 0.5f, cab - 0.2f, z, x + 0.5f, cab - 0.2f, z, 1f, 0.8f, 0.3f, 0.9f)
+        lines.line(x - 0.45f, hip, z, x + 0.45f, hip, z, r, g, b, 0.9f)
+        // angular cab: slanted front, flat rear
+        lines.line(x - 0.85f, hip, z, x - 0.85f, cab + 0.55f, z, r, g, b, 0.95f)
+        lines.line(x + 0.85f, hip, z, x + 0.6f, cab + 0.55f, z, r, g, b, 0.95f)   // slanted face
+        lines.line(x - 0.85f, cab + 0.55f, z, x + 0.6f, cab + 0.55f, z, r, g, b, 0.95f)
+        lines.line(x - 0.85f, hip + 0.0f, z, x + 0.85f, hip, z, r, g, b, 0.8f)
+        // viewport slit + twin chin guns on the slanted face
+        lines.line(x - 0.5f, cab + 0.15f, z, x + 0.3f, cab + 0.15f, z, 1f, 0.9f, 0.5f, 0.75f)
+        lines.line(x - 0.2f, cab - 0.2f, z, x - 0.2f, cab - 0.7f, z, 1f, 0.8f, 0.3f, 0.9f)
+        lines.line(x + 0.15f, cab - 0.2f, z, x + 0.15f, cab - 0.7f, z, 1f, 0.8f, 0.3f, 0.9f)
+        // cheek pods
+        lines.line(x - 1.15f, cab + 0.35f, z, x - 0.85f, cab + 0.45f, z, r, g, b, 0.7f)
+        lines.line(x - 1.15f, cab + 0.05f, z, x - 0.85f, cab + 0.05f, z, r, g, b, 0.7f)
+        lines.line(x - 1.15f, cab + 0.35f, z, x - 1.15f, cab + 0.05f, z, r, g, b, 0.7f)
+        lines.line(x + 0.6f, cab + 0.45f, z, x + 0.95f, cab + 0.35f, z, r, g, b, 0.7f)
+        lines.line(x + 0.6f, cab + 0.05f, z, x + 0.95f, cab + 0.05f, z, r, g, b, 0.7f)
+        lines.line(x + 0.95f, cab + 0.35f, z, x + 0.95f, cab + 0.05f, z, r, g, b, 0.7f)
     }
 
-    // -------------------------------------------------------- run scenes
+    // -------------------------------------------------------- run scenes    // -------------------------------------------------------- run scenes
 
     private fun buildTunnel(hw: Float, fl: Float, top: Float, r: Float, g: Float, b: Float, ceiling: Boolean) {
         val scroll = (game.time * game.worldSpeed) % 8f

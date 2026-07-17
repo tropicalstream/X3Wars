@@ -45,6 +45,7 @@ class Voice(private val context: Context) {
     private val phrases = HashMap<String, List<String>>()
     private val queue = ArrayDeque<String>()          // resolved clipIds; voice thread only
     private var player: MediaPlayer? = null
+    private var droidPlayer: MediaPlayer? = null   // R2's own channel — never queued
     private var thread: HandlerThread? = null
     private var handler: Handler? = null
     private val rng = Random(System.nanoTime())
@@ -156,10 +157,7 @@ class Voice(private val context: Context) {
 
     private fun sayOnThread(id: String, urgent: Boolean) {
         if (id.startsWith("droid_")) {
-            if (urgent) { queue.clear(); stopCurrent() }
-            else if (isSpeaking || queue.isNotEmpty()) return
-            queue.add(id)
-            pump()
+            playDroid(id.removePrefix("droid_"))
             return
         }
         val variants = phrases[id] ?: return
@@ -181,11 +179,6 @@ class Voice(private val context: Context) {
     private fun pump() {
         if (isSpeaking) return
         val cid = queue.pollFirst() ?: return
-        if (cid.startsWith("droid_")) {
-            val name = cid.removePrefix("droid_")
-            runCatching { context.assets.openFd("droid/$name.mp3") }.getOrNull()?.let { playFd(it) }
-            return
-        }
         // Cached sources only. If neither exists (first-boot bake still running),
         // the line is silently skipped — never synthesized on the spot.
         if (hasAsset(cid)) {
@@ -223,6 +216,37 @@ class Voice(private val context: Context) {
         }.onFailure { isSpeaking = false; Log.w(TAG, "clip failed", it) }
     }
 
+    /** The droid speaks whenever he likes — instantly, over anything. */
+    private fun playDroid(name: String) {
+        runCatching {
+            droidPlayer?.let { runCatching { it.stop(); it.release() } }
+            droidPlayer = null
+            val fd = context.assets.openFd("droid/$name.mp3")
+            val mp = MediaPlayer()
+            mp.setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_GAME)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build()
+            )
+            mp.setDataSource(fd.fileDescriptor, fd.startOffset, fd.length)
+            mp.setVolume(volume, volume)
+            mp.setOnCompletionListener {
+                runCatching { fd.close() }
+                runCatching { mp.release() }
+                if (droidPlayer == mp) droidPlayer = null
+            }
+            mp.setOnErrorListener { _, _, _ ->
+                runCatching { fd.close() }
+                runCatching { mp.release() }
+                if (droidPlayer == mp) droidPlayer = null
+                true
+            }
+            mp.prepare()
+            mp.start()
+            droidPlayer = mp
+        }.onFailure { Log.w(TAG, "droid $name", it) }
+    }
+
     private fun stopCurrent() {
         stopPlayer()
         isSpeaking = false
@@ -236,6 +260,8 @@ class Voice(private val context: Context) {
     fun release() {
         handler?.post {
             stopCurrent()
+            droidPlayer?.let { runCatching { it.stop(); it.release() } }
+            droidPlayer = null
             runCatching { baker?.shutdown() }
             baker = null
         }

@@ -307,6 +307,7 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
     /** Scene tables per level; BRIEFING and VICTORY bracket them. */
     private fun beginScene() {
         saidScene = false
+        r2Used = false          // one droid rescue available in every scene
         when (level) {
             Level.YAVIN -> when (sceneIdx) {
                 0 -> beginFighters()
@@ -1262,19 +1263,21 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
         shields--
         shake = 1f; hitFlash = 1f
         host.sfx(Sfx.EXPL_L, 1.3f, 0.9f)
-        // The little droid patches the ship — two cells, once per level,
-        // arriving exactly when things look grim.
+        // The little droid patches the ship — two cells, once per scene,
+        // arriving exactly when things look grim. The pilot says thanks.
         if (shields <= 1 && !r2Used) {
             r2Used = true
             shields = (shields + 2).coerceAtLeast(2)
             r2FlashT = 3f
             host.sfx(Sfx.LIFE, 1.1f, 0.9f)
             host.say("droid_excited")
+            host.say("pilot_thanks", urgent = true)
             return
         }
         if (shields < 0) gameOver() else if (shields <= 2) {
-            host.say("pilot_hit")
+            // R2 always frets at low shields — he has his own channel now.
             host.say("droid_worried")
+            host.say("pilot_hit")
         }
     }
 

@@ -106,5 +106,9 @@
   "sage_dock": [
     "Rest now, young one. Mended, your ship will be. Listen — the story, it continues.",
     "Safe in the hangar, we are. Breathe, repair, remember. Then — onward."
+  ],
+  "pilot_thanks": [
+    "Thanks, little buddy — I owe you one!",
+    "Nice work back there, my friend! Keep us flying!"
   ]
 }
