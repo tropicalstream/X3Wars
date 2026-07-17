@@ -45,7 +45,7 @@ class Voice(private val context: Context) {
     private val phrases = HashMap<String, List<String>>()
     private val queue = ArrayDeque<String>()          // resolved clipIds; voice thread only
     private var player: MediaPlayer? = null
-    private var droidPlayer: MediaPlayer? = null   // R2's own channel — never queued
+    private var droidPlayer: MediaPlayer? = null   // the astromech's own channel — never queued
     private var thread: HandlerThread? = null
     private var handler: Handler? = null
     private val rng = Random(System.nanoTime())

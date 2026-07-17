@@ -1194,9 +1194,9 @@ class GLRenderer(private val game: Game) : GLSurfaceView.Renderer {
         val g = game
 
         if (g.hitFlash > 0.01f) frame(6f, 1f, 0.2f, 0.15f, g.hitFlash * 0.9f)
-        if (g.r2FlashT > 0.01f) {
-            val a = g.r2FlashT.coerceAtMost(1f)
-            textC("R2 RESTORES SHIELDS +2", 320f, 210f, 1.7f, 0.4f, 1f, 0.9f, a)
+        if (g.droidFlashT > 0.01f) {
+            val a = g.droidFlashT.coerceAtMost(1f)
+            textC("DROID RESTORES SHIELDS +2", 320f, 210f, 1.7f, 0.4f, 1f, 0.9f, a)
         }
         if (g.whiteFlash > 0.01f) {
             var i = 0

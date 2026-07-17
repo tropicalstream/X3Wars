@@ -189,8 +189,8 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
     private var saidScene = false
     private var mazeStep = 0
     private var mazeSide = 1f
-    private var r2Used = false
-    var r2FlashT = 0f; private set        // HUD banner timer for the repair
+    private var droidUsed = false
+    var droidFlashT = 0f; private set        // HUD banner timer for the repair
     private var saidHalfK = false
     private var saidNearK = false
     private var saidRunHalf = false
@@ -288,7 +288,7 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
         clearField()
         state = GameState.BRIEFING; stateT = 0f
         rx = 0f; ry = 0f; rvx = 0f; rvy = 0f
-        r2Used = false
+        droidUsed = false
         saidHalfK = false; saidNearK = false; saidRunHalf = false
         snowMode = level == Level.HOTH
         briefTitle = if (part == 1) levelName() else "PART $part  " + levelName()
@@ -307,7 +307,7 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
     /** Scene tables per level; BRIEFING and VICTORY bracket them. */
     private fun beginScene() {
         saidScene = false
-        r2Used = false          // one droid rescue available in every scene
+        droidUsed = false          // one droid rescue available in every scene
         when (level) {
             Level.YAVIN -> when (sceneIdx) {
                 0 -> beginFighters()
@@ -631,7 +631,7 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
         shake = (shake - dt * 2.4f).coerceAtLeast(0f)
         hitFlash = (hitFlash - dt * 1.8f).coerceAtLeast(0f)
         whiteFlash = (whiteFlash - dt * 1.1f).coerceAtLeast(0f)
-        r2FlashT = (r2FlashT - dt).coerceAtLeast(0f)
+        droidFlashT = (droidFlashT - dt).coerceAtLeast(0f)
         beamT = (beamT + dt * 9f).coerceAtMost(1f)
 
         fireCd = (fireCd - dt).coerceAtLeast(0f)
@@ -1265,17 +1265,17 @@ class Game(private val store: SettingsStore, private val host: GameHost) {
         host.sfx(Sfx.EXPL_L, 1.3f, 0.9f)
         // The little droid patches the ship — two cells, once per scene,
         // arriving exactly when things look grim. The pilot says thanks.
-        if (shields <= 1 && !r2Used) {
-            r2Used = true
+        if (shields <= 1 && !droidUsed) {
+            droidUsed = true
             shields = (shields + 2).coerceAtLeast(2)
-            r2FlashT = 3f
+            droidFlashT = 3f
             host.sfx(Sfx.LIFE, 1.1f, 0.9f)
             host.say("droid_excited")
             host.say("pilot_thanks", urgent = true)
             return
         }
         if (shields < 0) gameOver() else if (shields <= 2) {
-            // R2 always frets at low shields — he has his own channel now.
+            // The droid always frets at low shields — it has its own channel now.
             host.say("droid_worried")
             host.say("pilot_hit")
         }
