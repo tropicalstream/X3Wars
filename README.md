@@ -6,6 +6,13 @@ wireframes on black (transparent on the waveguide), a young pilot, an old
 mystic in your ear, and one impossible torpedo shot at the heart of a
 moon-sized battle station.
 
+## Screenshots
+
+<p>
+  <img src="images/title.png" width="45%" alt="X3Wars title screen with vector battle station">
+  <img src="images/gameplay.png" width="45%" alt="X3Wars interceptor combat with crosshair HUD">
+</p>
+
 ## The campaign
 
 Three battles, cycling forever with a rising PART number and difficulty
